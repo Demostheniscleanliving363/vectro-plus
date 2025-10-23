@@ -159,6 +159,126 @@ pub mod search {
                 .collect()
         }
     }
+
+    /// Scalar quantization (per-dimension min/max -> u8)
+    pub mod quant {
+        /// Quantization table per-dimension
+        #[derive(Clone, Debug)]
+        pub struct QuantTable {
+            pub min: f32,
+            pub max: f32,
+        }
+
+        impl QuantTable {
+            pub fn new(min: f32, max: f32) -> Self {
+                Self { min, max }
+            }
+
+            /// Quantize a float in [min, max] to u8
+            pub fn quantize(&self, v: f32) -> u8 {
+                if self.max <= self.min {
+                    return 0u8;
+                }
+                let t = ((v - self.min) / (self.max - self.min)).clamp(0.0, 1.0);
+                (t * 255.0).round() as u8
+            }
+
+            /// Dequantize a u8 back to float
+            pub fn dequantize(&self, q: u8) -> f32 {
+                if self.max <= self.min {
+                    return self.min;
+                }
+                let t = (q as f32) / 255.0;
+                self.min + t * (self.max - self.min)
+            }
+        }
+
+        /// Quantizes a dataset of vectors per-dimension using min/max across dataset
+        pub fn quantize_dataset(vectors: &[Vec<f32>]) -> (Vec<QuantTable>, Vec<Vec<u8>>) {
+            if vectors.is_empty() {
+                return (vec![], vec![]);
+            }
+            let dim = vectors[0].len();
+            let mut mins = vec![f32::INFINITY; dim];
+            let mut maxs = vec![f32::NEG_INFINITY; dim];
+            for v in vectors {
+                for (i, x) in v.iter().enumerate() {
+                    if *x < mins[i] { mins[i] = *x }
+                    if *x > maxs[i] { maxs[i] = *x }
+                }
+            }
+            let tables: Vec<QuantTable> = mins.into_iter().zip(maxs.into_iter()).map(|(min, max)| QuantTable::new(min, max)).collect();
+
+            let qvecs: Vec<Vec<u8>> = vectors.iter().map(|v| {
+                v.iter().enumerate().map(|(i, x)| tables[i].quantize(*x)).collect()
+            }).collect();
+
+            (tables, qvecs)
+        }
+    }
+
+    /// Quantized index that stores u8 vectors with per-dimension quant tables.
+    pub struct QuantizedIndex {
+        ids: Vec<String>,
+        tables: Vec<quant::QuantTable>,
+        qvecs: Vec<Vec<u8>>,
+        dim: usize,
+        // optional cache of normalized dequantized vectors
+        normalized_cache: Option<Vec<Vec<f32>>>,
+    }
+
+    impl QuantizedIndex {
+        pub fn from_dataset(dataset: &[Embedding]) -> Self {
+            let ids: Vec<String> = dataset.iter().map(|e| e.id.clone()).collect();
+            let vectors: Vec<Vec<f32>> = dataset.iter().map(|e| e.vector.clone()).collect();
+            let (tables, qvecs) = quant::quantize_dataset(&vectors);
+            let dim = tables.len();
+            Self { ids, tables, qvecs, dim, normalized_cache: None }
+        }
+
+        /// Dequantize a u8 vector into f32 vector
+        fn dequantize_vec(&self, q: &[u8]) -> Vec<f32> {
+            q.iter().enumerate().map(|(i, &b)| self.tables[i].dequantize(b)).collect()
+        }
+
+        /// Top-k: dequantize vectors lazily and compute cosine with normalized query
+        pub fn top_k(&self, query: &[f32], k: usize) -> Vec<(&str, f32)> {
+            if query.len() != self.dim { return vec![]; }
+            let qnorm = norm(query);
+            if qnorm == 0.0 { return vec![]; }
+            let qnormed: Vec<f32> = query.iter().map(|v| v / qnorm).collect();
+
+            let mut scores: Vec<(&str, f32)> = match &self.normalized_cache {
+                Some(cache) => cache.par_iter().zip(self.ids.par_iter()).map(|(v, id)| {
+                    (id.as_str(), dot(v, &qnormed))
+                }).collect(),
+                None => self.qvecs.par_iter().zip(self.ids.par_iter()).map(|(qv, id)| {
+                    let v = self.dequantize_vec(qv);
+                    // normalize dequantized vector
+                    let n = norm(&v);
+                    let score = if n == 0.0 { -1.0 } else { dot(&v, &qnormed) / n };
+                    (id.as_str(), score)
+                }).collect(),
+            };
+
+            scores.par_sort_by(|a, b| b.1.partial_cmp(&a.1).unwrap_or(std::cmp::Ordering::Equal));
+            scores.into_iter().take(k).collect()
+        }
+
+        pub fn batch_top_k(&self, queries: &[Vec<f32>], k: usize) -> Vec<Vec<(&str, f32)>> {
+            queries.par_iter().map(|q| self.top_k(q, k)).collect()
+        }
+
+        /// Precompute and cache normalized dequantized vectors to accelerate scoring.
+        pub fn precompute_normalized(&mut self) {
+            let cache: Vec<Vec<f32>> = self.qvecs.iter().map(|qv| {
+                let v = self.dequantize_vec(qv);
+                let n = norm(&v);
+                if n == 0.0 { v.into_iter().map(|_| 0.0).collect() } else { v.into_iter().map(|x| x / n).collect() }
+            }).collect();
+            self.normalized_cache = Some(cache);
+        }
+    }
 }
 
 
@@ -237,5 +357,37 @@ mod tests {
         let q = vec![1.0, 0.0, 0.0];
         let res = idx.top_k(&q, 1);
         assert!(res.is_empty());
+    }
+
+    #[test]
+    fn quantize_roundtrip_and_topk() {
+        use crate::search::{quant, QuantizedIndex, SearchIndex};
+
+        let a = Embedding::new("a", vec![1.0, 0.0]);
+        let b = Embedding::new("b", vec![0.0, 1.0]);
+        let c = Embedding::new("c", vec![0.6, 0.8]);
+        let ds = vec![a.clone(), b.clone(), c.clone()];
+
+        // Quantize dataset
+        let vectors: Vec<Vec<f32>> = ds.iter().map(|e| e.vector.clone()).collect();
+        let (tables, qvecs) = quant::quantize_dataset(&vectors);
+        assert_eq!(tables.len(), 2);
+        assert_eq!(qvecs.len(), 3);
+
+        // dequantize first vector
+        let q0 = &qvecs[0];
+        let deq0: Vec<f32> = q0.iter().enumerate().map(|(i, &b)| tables[i].dequantize(b)).collect();
+        assert!((deq0[0] - 1.0).abs() < 1e-2 || (deq0[0] - 1.0).abs() < 1e-1);
+
+        // Compare top-k between float index and quantized index
+        let float_idx = SearchIndex::from_dataset(&ds);
+        let q_idx = QuantizedIndex::from_dataset(&ds);
+
+        let query = vec![0.6f32, 0.8f32];
+        let ftop = float_idx.top_k(&query, 3);
+        let qtop = q_idx.top_k(&query, 3);
+
+        // top-1 should likely be the same (c)
+        assert_eq!(ftop[0].0, qtop[0].0);
     }
 }
