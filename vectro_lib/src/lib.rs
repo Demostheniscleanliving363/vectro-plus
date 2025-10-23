@@ -1,6 +1,6 @@
 use serde::{Deserialize, Serialize};
 use std::fs::File;
-use std::io::{Read, Write};
+use std::io::{Read, Write, Seek, SeekFrom};
 
 #[derive(Debug, Clone, Serialize, Deserialize, PartialEq)]
 pub struct Embedding {
@@ -44,6 +44,87 @@ impl EmbeddingDataset {
 
     pub fn load(path: &str) -> anyhow::Result<Self> {
         let mut f = File::open(path)?;
+        // detect if file is our streaming format by checking header
+        let header = b"VECTRO+STREAM1\n";
+        let qheader = b"VECTRO+QSTREAM1\n";
+        let max_len = std::cmp::max(header.len(), qheader.len());
+        let mut sig = vec![0u8; max_len];
+        let n = f.read(&mut sig)?;
+        // reset cursor so each branch can read from the start as needed
+        f.seek(SeekFrom::Start(0))?;
+        if n >= header.len() && sig.as_slice()[..header.len()] == *header {
+            // streaming format: multiple length-prefixed bincode Embedding entries
+            let mut embeddings = Vec::new();
+            // consume header
+            let mut _hdr = vec![0u8; header.len()];
+            let _ = f.read_exact(&mut _hdr);
+            loop {
+                let mut lenbuf = [0u8; 4];
+                match f.read_exact(&mut lenbuf) {
+                    Ok(_) => {
+                        let len = u32::from_le_bytes(lenbuf) as usize;
+                        let mut buf = vec![0u8; len];
+                        f.read_exact(&mut buf)?;
+                        let e: Embedding = bincode::deserialize(&buf)?;
+                        embeddings.push(e);
+                    }
+                    Err(_) => break,
+                }
+            }
+            return Ok(EmbeddingDataset { embeddings });
+        }
+
+        // maybe quantized stream
+        // rewind and check for qheader
+        f.seek(SeekFrom::Start(0))?;
+        let mut qsig = vec![0u8; qheader.len()];
+        if let Ok(_) = f.read_exact(&mut qsig) {
+            if qsig.as_slice() == qheader {
+                // we've consumed the header already; proceed (tables follow)
+                // quantized stream layout: u32(table_count) u32(dim) [tables serialized as bincode] then repeated len-prefixed records: bincode((id:String, qvec:Vec<u8>))
+                let mut buf4 = [0u8; 4];
+                f.read_exact(&mut buf4)?;
+                let _table_count = u32::from_le_bytes(buf4) as usize;
+                f.read_exact(&mut buf4)?;
+                let _dim = u32::from_le_bytes(buf4) as usize;
+                // read tables blob length
+                f.read_exact(&mut buf4)?;
+                let tables_len = u32::from_le_bytes(buf4) as usize;
+                let mut tblbuf = vec![0u8; tables_len];
+                f.read_exact(&mut tblbuf)?;
+                let _tables: Vec<crate::search::quant::QuantTable> = bincode::deserialize(&tblbuf)?;
+
+                // now read quantized entries
+                let mut embeddings = Vec::new();
+                loop {
+                    let mut lenbuf = [0u8; 4];
+                    match f.read_exact(&mut lenbuf) {
+                        Ok(_) => {
+                            let len = u32::from_le_bytes(lenbuf) as usize;
+                            let mut buf = vec![0u8; len];
+                            f.read_exact(&mut buf)?;
+                            let rec: (String, Vec<u8>) = bincode::deserialize(&buf)?;
+                            // dequantize
+                            let id = rec.0;
+                            let qv = rec.1;
+                            // naive dequantize each value using tables sequentially
+                            // if tables length mismatch, we'll skip
+                            let mut v = Vec::with_capacity(qv.len());
+                            for (i, &b) in qv.iter().enumerate() {
+                                let val = _tables[i].dequantize(b);
+                                v.push(val);
+                            }
+                            embeddings.push(Embedding::new(id, v));
+                        }
+                        Err(_) => break,
+                    }
+                }
+                return Ok(EmbeddingDataset { embeddings });
+            }
+        }
+
+        // fallback: rewind and read whole-file bincode
+        f.seek(SeekFrom::Start(0))?;
         let mut buf = Vec::new();
         f.read_to_end(&mut buf)?;
         let ds: EmbeddingDataset = bincode::deserialize(&buf)?;
@@ -55,6 +136,7 @@ impl EmbeddingDataset {
 pub mod search {
     use crate::Embedding;
     use rayon::prelude::*;
+    
 
     /// Compute dot product between two same-length slices
     fn dot(a: &[f32], b: &[f32]) -> f32 {
@@ -162,8 +244,9 @@ pub mod search {
 
     /// Scalar quantization (per-dimension min/max -> u8)
     pub mod quant {
+        use serde::{Deserialize, Serialize};
         /// Quantization table per-dimension
-        #[derive(Clone, Debug)]
+        #[derive(Clone, Debug, Serialize, Deserialize)]
         pub struct QuantTable {
             pub min: f32,
             pub max: f32,
