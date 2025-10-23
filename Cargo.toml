@@ -1,0 +1,6 @@
+[workspace]
+members = [
+    "vectro_lib",
+    "vectro_cli",
+]
+resolver = "2"
