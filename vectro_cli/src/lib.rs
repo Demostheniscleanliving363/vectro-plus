@@ -191,8 +191,9 @@ pub fn compress_stream(input: &str, output: &str, quantize: bool) -> anyhow::Res
         if let Some(h) = writer_handle_opt { let _ = h.join(); }
     }
     if quantize {
-        // If quantized, show a short summary including table count (attempt to read tables from file)
-        let mut table_count = 0usize;
+    // If quantized, show a short summary including table count (attempt to read tables from file)
+    // variable intentionally unused; underscore prefix to silence warnings
+    let _table_count = 0usize;
         if let Ok(mut f) = std::fs::File::open(output) {
             use std::io::Read;
             let mut hdr = vec![0u8; 16];
