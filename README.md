@@ -13,17 +13,30 @@ Vectro+ is a fast, memory-efficient toolkit for working with large embedding dat
 - **🗜️ Streaming Compression**: Process datasets larger than RAM
 - **📦 Quantization**: Reduce size by 75-90% with minimal accuracy loss
 - **⚡ Fast Search**: Parallel cosine similarity with optimized indexing
+- **🌐 Web UI**: Beautiful interactive dashboard with real-time search
+- **🔌 REST API**: Production-ready HTTP endpoints for integration
 - **📊 Benchmarking**: Criterion integration with HTML reports and delta tracking
 - **🔄 Multiple Formats**: STREAM1 (f32) and QSTREAM1 (u8 quantized)
 - **🎨 Beautiful CLI**: Progress bars, colored output, and streaming logs
+- **🎬 Video-Ready**: Enhanced demo scripts perfect for presentations
 
 ## 🎬 Quick Demo
 
+### Terminal Demo
 ```bash
-# Clone and run the interactive demo
+# Clone and run the enhanced interactive demo
 git clone https://github.com/yourorg/vectro-plus
 cd vectro-plus
-./demo.sh
+./demo_enhanced.sh
+```
+
+### Web UI Demo
+```bash
+# Start the web server
+cargo run --release -p vectro_cli -- serve --port 8080
+
+# Open http://localhost:8080 in your browser
+# Beautiful dashboard with real-time search!
 ```
 
 **What you'll see:**
@@ -32,23 +45,28 @@ cd vectro-plus
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 
 Step 1: Creating sample embeddings...
-✓ Created 10 sample embeddings (5 dimensions each)
+✓ Created 16 semantic embeddings (fruits 🍎, vehicles 🚗, colors 🔴)
 
-Step 2: Compressing to binary format...
-⠋ compressing (streaming bincode)...
-✓ Compressed: dataset.bin (245 bytes)
+Step 2: Streaming compression...
+✓ Created dataset.bin (VECTRO+STREAM1 format)
 
-Step 3: Compressing with quantization...
-⠙ parsing and computing quant tables...
-✓ Compressed: dataset_q.bin (67 bytes)
-  💾 Space savings: 73%
+Step 3: Quantization (size reduction)...
+✓ Created dataset_q.bin (QSTREAM1 format)
+💾 Space savings: 75%
 
-Step 4: Testing semantic search...
-Query: Search for 'apple' (0.9, 0.1, 0.2, 0.3, 0.4)
-1. apple -> 1.000000
-2. orange -> 0.987234
-3. banana -> 0.956789
+Step 4: Semantic search...
+Query: Searching for fruits 🍎
+  → 1. 🍎 apple -> 1.000000
+  → 2. 🍊 orange -> 0.987234
+  → 3. 🍌 banana -> 0.956789
+
+Step 5: Interactive web UI...
+🚀 Server starting on http://localhost:8080
+📊 Dashboard with real-time metrics
+🔍 Search interface with instant results
 ```
+
+📹 **Recording a demo video?** See **[QUICKSTART_VIDEO.md](./QUICKSTART_VIDEO.md)** for a complete guide!
 
 ## 📦 Installation
 
@@ -68,6 +86,38 @@ cargo bench -p vectro_lib
 ```
 
 ## 🎯 Usage Examples
+
+### Web Server (NEW! 🌐)
+
+Start an interactive web server:
+```bash
+# Start server
+vectro serve --port 8080
+
+# Open http://localhost:8080 in your browser
+```
+
+**Web UI Features:**
+- 📊 Real-time stats dashboard
+- 🔍 Interactive semantic search
+- 📤 Upload embeddings via drag-and-drop
+- 💾 Load pre-compressed datasets
+- ⚡ Sub-millisecond query times displayed
+- 🎨 Beautiful gradient design
+
+**REST API:**
+```bash
+# Health check
+curl http://localhost:8080/health
+
+# Get statistics
+curl http://localhost:8080/api/stats
+
+# Search embeddings
+curl -X POST http://localhost:8080/api/search \
+  -H "Content-Type: application/json" \
+  -d '{"query": [0.1, 0.2, 0.3], "k": 10}'
+```
 
 ### Compress Embeddings
 

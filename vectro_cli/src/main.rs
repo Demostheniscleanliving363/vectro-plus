@@ -4,6 +4,8 @@ use vectro_cli::compress_stream;
 
 use serde_json::Value;
 
+mod server;
+
 #[derive(Parser)]
 #[command(name = "vectro")]
 #[command(about = "Vectro+ — Rust embedding compressor & search tool", long_about = None)]
@@ -294,7 +296,9 @@ fn main() -> anyhow::Result<()> {
             }
         }
         Commands::Serve { port } => {
-            println!("serve on port {} (not implemented)", port);
+            tokio::runtime::Runtime::new()?.block_on(async {
+                server::serve(port).await
+            })?;
         }
     }
 
