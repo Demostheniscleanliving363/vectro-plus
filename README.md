@@ -8,6 +8,9 @@ Vectro+ is a fast, memory-efficient toolkit for working with large embedding dat
 [![Rust](https://img.shields.io/badge/rust-1.89+-orange)]()
 [![License](https://img.shields.io/badge/license-MIT-blue)]()
 
+## Demo
+![VectroPlusDemo](https://github.com/user-attachments/assets/a2fcf0a3-e172-4230-afb8-6aea15093649)
+
 ## ✨ Features
 
 - **🗜️ Streaming Compression**: Process datasets larger than RAM
