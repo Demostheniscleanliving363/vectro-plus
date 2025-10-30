@@ -703,4 +703,121 @@ mod tests {
         assert_eq!(results.len(), 1);
         assert_eq!(results[0].0, "apple");
     }
+
+    #[test]
+    fn test_cli_parsing_compress() {
+        // Test that CLI can parse compress command
+        use clap::Parser;
+        
+        let args = vec!["vectro", "compress", "input.jsonl", "output.bin"];
+        let cli = Cli::try_parse_from(args);
+        assert!(cli.is_ok());
+        
+        if let Ok(cli) = cli {
+            match cli.command {
+                Commands::Compress { input, output, quantize } => {
+                    assert_eq!(input, "input.jsonl");
+                    assert_eq!(output, "output.bin");
+                    assert!(!quantize);
+                }
+                _ => panic!("Expected Compress command"),
+            }
+        }
+    }
+
+    #[test]
+    fn test_cli_parsing_compress_quantized() {
+        use clap::Parser;
+        
+        let args = vec!["vectro", "compress", "in.jsonl", "out.bin", "--quantize"];
+        let cli = Cli::try_parse_from(args).unwrap();
+        
+        match cli.command {
+            Commands::Compress { quantize, .. } => {
+                assert!(quantize);
+            }
+            _ => panic!("Expected Compress command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parsing_search() {
+        use clap::Parser;
+        
+        let args = vec!["vectro", "search", "1.0,0.0,0.0"];
+        let cli = Cli::try_parse_from(args).unwrap();
+        
+        match cli.command {
+            Commands::Search { query, top_k, dataset } => {
+                assert_eq!(query, "1.0,0.0,0.0");
+                assert_eq!(top_k, 10); // default
+                assert!(dataset.is_none());
+            }
+            _ => panic!("Expected Search command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parsing_search_with_options() {
+        use clap::Parser;
+        
+        let args = vec!["vectro", "search", "1.0,0.0", "--top-k", "5", "--dataset", "data.bin"];
+        let cli = Cli::try_parse_from(args).unwrap();
+        
+        match cli.command {
+            Commands::Search { query, top_k, dataset } => {
+                assert_eq!(query, "1.0,0.0");
+                assert_eq!(top_k, 5);
+                assert_eq!(dataset.as_deref(), Some("data.bin"));
+            }
+            _ => panic!("Expected Search command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parsing_serve() {
+        use clap::Parser;
+        
+        let args = vec!["vectro", "serve"];
+        let cli = Cli::try_parse_from(args).unwrap();
+        
+        match cli.command {
+            Commands::Serve { port } => {
+                assert_eq!(port, 8080); // default
+            }
+            _ => panic!("Expected Serve command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parsing_serve_custom_port() {
+        use clap::Parser;
+        
+        let args = vec!["vectro", "serve", "--port", "3000"];
+        let cli = Cli::try_parse_from(args).unwrap();
+        
+        match cli.command {
+            Commands::Serve { port } => {
+                assert_eq!(port, 3000);
+            }
+            _ => panic!("Expected Serve command"),
+        }
+    }
+
+    #[test]
+    fn test_cli_parsing_bench() {
+        use clap::Parser;
+        
+        let args = vec!["vectro", "bench"];
+        let cli = Cli::try_parse_from(args).unwrap();
+        
+        match cli.command {
+            Commands::Bench { save_report, open_report, summary, .. } => {
+                assert!(save_report.is_none());
+                assert!(!open_report);
+                assert!(summary); // default true
+            }
+            _ => panic!("Expected Bench command"),
+        }
+    }
 }
