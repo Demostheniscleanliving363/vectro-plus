@@ -98,10 +98,7 @@ fn load_dataset_or_default(dataset_path: Option<&str>) -> Vec<vectro_lib::Embedd
     use std::path::Path;
     
     if let Some(path) = dataset_path {
-        match vectro_lib::EmbeddingDataset::load(path) {
-            Ok(ds) => return ds.embeddings,
-            Err(_) => {}
-        }
+        if let Ok(ds) = vectro_lib::EmbeddingDataset::load(path) { return ds.embeddings }
     } else if Path::new("./dataset.bin").exists() {
         if let Ok(ds) = vectro_lib::EmbeddingDataset::load("./dataset.bin") {
             return ds.embeddings;
@@ -166,7 +163,7 @@ fn main() -> anyhow::Result<()> {
                 let pb_out = pb.clone();
                 thread::spawn(move || {
                     let reader = BufReader::new(out);
-                    for line in reader.lines().flatten() {
+                    for line in reader.lines().map_while(Result::ok) {
                         pb_out.println(line);
                     }
                 });
@@ -177,7 +174,7 @@ fn main() -> anyhow::Result<()> {
                 let pb_err = pb.clone();
                 thread::spawn(move || {
                     let reader = BufReader::new(err);
-                    for line in reader.lines().flatten() {
+                    for line in reader.lines().map_while(Result::ok) {
                         pb_err.println(line);
                     }
                 });

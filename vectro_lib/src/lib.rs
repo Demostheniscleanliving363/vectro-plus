@@ -22,6 +22,12 @@ pub struct EmbeddingDataset {
     pub embeddings: Vec<Embedding>,
 }
 
+impl Default for EmbeddingDataset {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl EmbeddingDataset {
     pub fn new() -> Self {
         Self { embeddings: vec![] }
@@ -33,6 +39,10 @@ impl EmbeddingDataset {
 
     pub fn len(&self) -> usize {
         self.embeddings.len()
+    }
+
+    pub fn is_empty(&self) -> bool {
+        self.embeddings.is_empty()
     }
 
     pub fn save(&self, path: &str) -> anyhow::Result<()> {
@@ -78,8 +88,8 @@ impl EmbeddingDataset {
         // rewind and check for qheader
         f.seek(SeekFrom::Start(0))?;
         let mut qsig = vec![0u8; qheader.len()];
-        if let Ok(_) = f.read_exact(&mut qsig) {
-            if qsig.as_slice() == qheader {
+        if f.read_exact(&mut qsig).is_ok()
+            && qsig.as_slice() == qheader {
                 // we've consumed the header already; proceed (tables follow)
                 // quantized stream layout: u32(table_count) u32(dim) [tables serialized as bincode] then repeated len-prefixed records: bincode((id:String, qvec:Vec<u8>))
                 let mut buf4 = [0u8; 4];
@@ -121,7 +131,6 @@ impl EmbeddingDataset {
                 }
                 return Ok(EmbeddingDataset { embeddings });
             }
-        }
 
         // fallback: rewind and read whole-file bincode
         f.seek(SeekFrom::Start(0))?;
@@ -290,7 +299,7 @@ pub mod search {
                     if *x > maxs[i] { maxs[i] = *x }
                 }
             }
-            let tables: Vec<QuantTable> = mins.into_iter().zip(maxs.into_iter()).map(|(min, max)| QuantTable::new(min, max)).collect();
+            let tables: Vec<QuantTable> = mins.into_iter().zip(maxs).map(|(min, max)| QuantTable::new(min, max)).collect();
 
             let qvecs: Vec<Vec<u8>> = vectors.iter().map(|v| {
                 v.iter().enumerate().map(|(i, x)| tables[i].quantize(*x)).collect()
@@ -641,7 +650,7 @@ mod tests {
         let q2 = vec![0.0, 1.0];
 
         let single = idx.top_k(&q1, 2);
-        let batch = idx.batch_top_k(&vec![q1.clone(), q2.clone()], 2);
+        let batch = idx.batch_top_k(&[q1.clone(), q2.clone()], 2);
 
         assert_eq!(single.len(), 2);
         assert_eq!(batch.len(), 2);

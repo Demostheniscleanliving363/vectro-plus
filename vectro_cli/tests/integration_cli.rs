@@ -1,5 +1,4 @@
 use tempfile::NamedTempFile;
-use std::io::Write;
 
 #[test]
 fn test_search_command() {

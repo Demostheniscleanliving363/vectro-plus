@@ -6,10 +6,10 @@ pub fn compress_stream(input: &str, output: &str, quantize: bool) -> anyhow::Res
     use std::thread;
 
     let header = b"VECTRO+STREAM1\n";
-    let infile = std::fs::File::open(&input)?;
+    let infile = std::fs::File::open(input)?;
     let reader = BufReader::new(infile);
 
-    let outfile = std::fs::File::create(&output)?;
+    let outfile = std::fs::File::create(output)?;
     let writer_buf = std::io::BufWriter::new(outfile);
 
     // channels
@@ -26,7 +26,7 @@ pub fn compress_stream(input: &str, output: &str, quantize: bool) -> anyhow::Res
         let mut w = writer_buf;
         let rx_for_writer = bytes_rx.clone();
         let out_for_writer = out_clone.clone();
-        let header_local = header.clone();
+        let header_local = *header;
         let handle = thread::spawn(move || -> anyhow::Result<()> {
             w.write_all(&header_local)?;
             let mut written = 0usize;
@@ -71,8 +71,8 @@ pub fn compress_stream(input: &str, output: &str, quantize: bool) -> anyhow::Res
     // reader: parse lines and collect embeddings
     let mut parsed = 0usize;
     // collect embeddings when quantizing
-    let mut collected_embeddings: Vec<vectro_lib::Embedding> = if quantize { Vec::new() } else { Vec::new() };
-    for line in reader.lines().flatten() {
+    let mut collected_embeddings: Vec<vectro_lib::Embedding> = Vec::new();
+    for line in reader.lines().map_while(Result::ok) {
         let line = line.trim();
         if line.is_empty() { continue; }
 
@@ -120,7 +120,7 @@ pub fn compress_stream(input: &str, output: &str, quantize: bool) -> anyhow::Res
             let mut w = std::io::BufWriter::new(&mut f);
             w.write_all(qheader)?;
             let table_count = (tables.len() as u32).to_le_bytes();
-            let dim = (if tables.len() > 0 { tables.len() as u32 } else { 0u32 }).to_le_bytes();
+            let dim = (if !tables.is_empty() { tables.len() as u32 } else { 0u32 }).to_le_bytes();
             let tables_len = (tables_blob.len() as u32).to_le_bytes();
             w.write_all(&table_count)?;
             w.write_all(&dim)?;

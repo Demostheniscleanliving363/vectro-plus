@@ -478,6 +478,6 @@ mod tests {
             .allow_headers(Any);
         
         // If we got here, CORS construction succeeded
-        assert!(true);
+        // Test passes by not panicking
     }
 }
