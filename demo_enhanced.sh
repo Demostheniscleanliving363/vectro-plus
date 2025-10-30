@@ -15,6 +15,9 @@ MAGENTA='\033[0;35m'
 RED='\033[0;31m'
 NC='\033[0m' # No Color
 
+# Directory of this script (repo root for vectro-plus)
+SCRIPT_DIR=$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)
+
 # Animation helpers
 spinner() {
     local pid=$1
@@ -114,10 +117,8 @@ pause_for_demo
 print_step "STEP 2: Streaming Compression" \
            "Converting JSONL to efficient binary format (STREAM1)"
 
-echo -ne "${CYAN}⠋${NC} Compressing..."
-cargo run --release -p vectro_cli -- compress sample_semantic.jsonl dataset.bin > /dev/null 2>&1 &
-spinner $!
-wait $!
+echo -e "${CYAN}⠋${NC} Compressing..."
+cargo run --manifest-path "$SCRIPT_DIR/Cargo.toml" --release -p vectro_cli -- compress sample_semantic.jsonl dataset.bin
 
 REGULAR_SIZE=$(stat -f%z dataset.bin 2>/dev/null || stat -c%s dataset.bin 2>/dev/null)
 print_success "Created ${BOLD}dataset.bin${NC}"
@@ -132,10 +133,8 @@ pause_for_demo
 print_step "STEP 3: Quantization (Size Reduction)" \
            "Converting floats to 8-bit with per-dimension scaling"
 
-echo -ne "${CYAN}⠋${NC} Quantizing..."
-cargo run --release -p vectro_cli -- compress sample_semantic.jsonl dataset_q.bin --quantize > /dev/null 2>&1 &
-spinner $!
-wait $!
+echo -e "${CYAN}⠋${NC} Quantizing..."
+cargo run --manifest-path "$SCRIPT_DIR/Cargo.toml" --release -p vectro_cli -- compress sample_semantic.jsonl dataset_q.bin --quantize
 
 QUANTIZED_SIZE=$(stat -f%z dataset_q.bin 2>/dev/null || stat -c%s dataset_q.bin 2>/dev/null)
 SAVINGS=$((100 - (QUANTIZED_SIZE * 100 / REGULAR_SIZE)))
@@ -158,7 +157,7 @@ print_step "STEP 4: Semantic Search Demo" \
 echo -e "${BOLD}Query 1:${NC} Searching for fruits 🍎 (similar to apple)"
 print_data "Vector: [0.92, 0.15, 0.18, 0.12, 0.25, 0.08, 0.14, 0.22]"
 echo ""
-cargo run --release -p vectro_cli -- search "0.92,0.15,0.18,0.12,0.25,0.08,0.14,0.22" --top-k 4 --dataset dataset.bin 2>/dev/null | while read line; do
+cargo run --manifest-path "$SCRIPT_DIR/Cargo.toml" --release -p vectro_cli -- search "0.92,0.15,0.18,0.12,0.25,0.08,0.14,0.22" --top-k 4 --dataset dataset.bin | while read line; do
     echo -e "  ${GREEN}→${NC} $line"
 done
 pause_for_demo
@@ -167,7 +166,7 @@ echo ""
 echo -e "${BOLD}Query 2:${NC} Searching for vehicles 🚗 (similar to car)"
 print_data "Vector: [0.12, 0.88, 0.82, 0.75, 0.68, 0.15, 0.20, 0.10]"
 echo ""
-cargo run --release -p vectro_cli -- search "0.12,0.88,0.82,0.75,0.68,0.15,0.20,0.10" --top-k 4 --dataset dataset.bin 2>/dev/null | while read line; do
+cargo run --manifest-path "$SCRIPT_DIR/Cargo.toml" --release -p vectro_cli -- search "0.12,0.88,0.82,0.75,0.68,0.15,0.20,0.10" --top-k 4 --dataset dataset.bin | while read line; do
     echo -e "  ${GREEN}→${NC} $line"
 done
 pause_for_demo
@@ -176,7 +175,7 @@ echo ""
 echo -e "${BOLD}Query 3:${NC} Searching for warm colors 🔴 (similar to red)"
 print_data "Vector: [0.50, 0.48, 0.15, 0.12, 0.92, 0.88, 0.20, 0.15]"
 echo ""
-cargo run --release -p vectro_cli -- search "0.50,0.48,0.15,0.12,0.92,0.88,0.20,0.15" --top-k 3 --dataset dataset.bin 2>/dev/null | while read line; do
+cargo run --manifest-path "$SCRIPT_DIR/Cargo.toml" --release -p vectro_cli -- search "0.50,0.48,0.15,0.12,0.92,0.88,0.20,0.15" --top-k 3 --dataset dataset.bin | while read line; do
     echo -e "  ${GREEN}→${NC} $line"
 done
 pause_for_demo
@@ -208,7 +207,7 @@ echo ""
 
 # Start server
 cd "$DEMO_DIR"
-cargo run --release -p vectro_cli -- serve --port 8080
+cargo run --manifest-path "$SCRIPT_DIR/Cargo.toml" --release -p vectro_cli -- serve --port 8080
 
 # ============================================================================
 # CLEANUP (won't reach here due to Ctrl+C, but good practice)

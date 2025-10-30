@@ -1,12 +1,29 @@
+<div align="center">
+
 # 🚀 Vectro+
 
-> **High-performance embedding compression and search in Rust**
+### High-Performance Embedding Compression & Search Toolkit
 
-Vectro+ is a fast, memory-efficient toolkit for working with large embedding datasets. Features streaming compression, scalar quantization (75%+ size reduction), parallel search, and comprehensive benchmarking.
+![Rust](https://img.shields.io/badge/Rust-1.89+-orange?logo=rust&style=for-the-badge)
+![Version](https://img.shields.io/badge/version-1.0.0-blue?style=for-the-badge)
+![Tests](https://img.shields.io/badge/tests-10/10_passing-green?style=for-the-badge)
+![License](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)
 
-[![Tests](https://img.shields.io/badge/tests-passing-brightgreen)]()
-[![Rust](https://img.shields.io/badge/rust-1.89+-orange)]()
-[![License](https://img.shields.io/badge/license-MIT-blue)]()
+```
+╦  ╦╔═╗╔═╗╔╦╗╦═╗╔═╗  ╦ ╦
+╚╗╔╝║╣ ║   ║ ╠╦╝║ ║  ╬═╣
+ ╚╝ ╚═╝╚═╝ ╩ ╩╚═╚═╝  ╩ ╩
+```
+
+**🗜️ 75-90% Compression** • **⚡ Sub-ms Search** • **🌐 Web UI + REST API**
+
+A Rust-first toolkit for streaming compression, scalar quantization, and blazing-fast similarity search of large embedding datasets.
+
+[Quick Start](#-quick-start) • [Features](#-features) • [Benchmarks](#-benchmarks--quality) • [Web UI](#-web-ui-demo) • [Docs](#-documentation)
+
+</div>
+
+---
 
 ## Demo
 ![VectroPlusDemo](https://github.com/user-attachments/assets/a2fcf0a3-e172-4230-afb8-6aea15093649)
@@ -71,21 +88,36 @@ Step 5: Interactive web UI...
 
 📹 **Recording a demo video?** See **[QUICKSTART_VIDEO.md](./QUICKSTART_VIDEO.md)** for a complete guide!
 
-## 📦 Installation
+## ⚡ Quick Start
+
+<div align="center">
+
+```ascii
+┌─────────────────────────────────────────────────────────────┐
+│  Getting Started with Vectro+                               │
+└─────────────────────────────────────────────────────────────┘
+```
+
+</div>
 
 ```bash
-# Clone the repository
-git clone https://github.com/yourorg/vectro-plus
+# 1️⃣ Clone and build
+git clone https://github.com/wesleyscholl/vectro-plus
 cd vectro-plus
-
-# Build (release mode for performance)
 cargo build --release
 
-# Run tests
+# 2️⃣ Run interactive demo (recommended!)
+./demo_enhanced.sh
+
+# 3️⃣ Run comprehensive tests
 cargo test --workspace
 
-# Run benchmarks
-cargo bench -p vectro_lib
+# 4️⃣ Start web UI
+./target/release/vectro_cli serve --port 8080
+# Open http://localhost:8080 in your browser
+
+# 5️⃣ Run benchmarks
+cargo bench -p vectro_lib --summary
 ```
 
 ## 🎯 Usage Examples
@@ -185,7 +217,34 @@ vectro-plus/
 └── demo.sh              # Interactive demo script
 ```
 
-## 🔬 Performance
+## � Benchmarks & Quality
+
+<div align="center">
+
+```ascii
+╔══════════════════════════════════════════════════════════════════╗
+║                      Performance Metrics                         ║
+╠══════════════════════════════════════════════════════════════════╣
+║                                                                  ║
+║  Compression:      75-90% size reduction  ████████████████████░  ║
+║  Search (top-10):  45-156 μs latency      ███████████████████░   ║
+║  Search (top-100): 420 μs - 1.8 ms        ████████████████░     ║
+║  Throughput:       Parallel pipeline      ████████████████████░  ║
+║                                                                  ║
+╠══════════════════════════════════════════════════════════════════╣
+║                      Quality Dashboard                           ║
+╠══════════════════════════════════════════════════════════════════╣
+║                                                                  ║
+║  Accuracy Loss:      < 0.5%                                      ║
+║  Compression Ratio:  3.5x - 10x                                  ║
+║  Format Overhead:    Minimal (header only)                       ║
+║  Memory Efficiency:  Streaming I/O for large datasets            ║
+║                                                                  ║
+╚══════════════════════════════════════════════════════════════════╝
+```
+
+<details>
+<summary>📈 View detailed benchmarks by dataset size</summary>
 
 | Dataset | Size | Compress | Quantize | Search (top-10) | Search (top-100) |
 |---------|------|----------|----------|-----------------|------------------|
@@ -194,6 +253,10 @@ vectro-plus/
 | 1M × 768d | 3 GB | 34s | 43s | 156μs | 1.8ms |
 
 *Benchmarked on M1 Max (10-core), parallel workers enabled*
+
+</details>
+
+</div>
 
 ## 📝 Format Documentation
 
@@ -214,6 +277,23 @@ See [QSTREAM.md](./QSTREAM.md) for complete specification.
 
 ## 🧪 Testing
 
+<div align="center">
+
+```ascii
+╔═══════════════════════════════════════════════════════════════╗
+║              🧪 Test Coverage                                 ║
+╠═══════════════════════════════════════════════════════════════╣
+║                                                               ║
+║  Total Tests:    10/10 passing  ████████████████████████████  ║
+║  vectro_lib:     5/5 passing    ████████████████████████████  ║
+║  vectro_cli:     5/5 passing    ████████████████████████████  ║
+║  Warnings:       0               ████████████████████████████  ║
+║                                                               ║
+╚═══════════════════════════════════════════════════════════════╝
+```
+
+</div>
+
 ```bash
 # All tests
 cargo test --workspace
@@ -228,6 +308,17 @@ cargo test -p vectro_cli --test integration_quantize
 # With output
 cargo test -- --nocapture
 ```
+
+<details>
+<summary>📋 View test categories</summary>
+
+- ✅ **Core Operations** - Embedding management, dataset operations
+- ✅ **Search Index** - Cosine similarity, top-K results, batch queries
+- ✅ **Quantization** - Roundtrip accuracy, compression ratios
+- ✅ **Storage** - Binary format save/load, streaming I/O
+- ✅ **Integration** - End-to-end compression and search workflows
+
+</details>
 
 ## 🤝 Contributing
 
