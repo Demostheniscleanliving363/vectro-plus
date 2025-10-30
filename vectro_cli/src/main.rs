@@ -1,3 +1,21 @@
+//! Vectro+ CLI - Command-line interface for embedding compression and search
+//!
+//! # Examples
+//!
+//! ```no_run
+//! // Compress embeddings
+//! // vectro compress input.jsonl output.bin
+//!
+//! // Search for similar vectors
+//! // vectro search "1.0,2.0,3.0" --top-k 10 --dataset output.bin
+//!
+//! // Run benchmarks
+//! // vectro bench --summary --open-report
+//!
+//! // Start web server
+//! // vectro serve --port 8080
+//! ```
+
 use clap::{Parser, Subcommand};
 use std::path::Path;
 use vectro_cli::compress_stream;

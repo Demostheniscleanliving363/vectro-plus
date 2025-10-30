@@ -226,10 +226,63 @@ mod tests {
         let tmp_out = NamedTempFile::new().unwrap();
         let out_path = tmp_out.path().to_str().unwrap().to_string();
 
-    let n = compress_stream(&in_path, &out_path, false).expect("compress");
+        let n = compress_stream(&in_path, &out_path, false).expect("compress");
         assert_eq!(n, 2);
 
         let ds = vectro_lib::EmbeddingDataset::load(&out_path).expect("load");
         assert_eq!(ds.len(), 2);
+    }
+
+    #[test]
+    fn compress_quantized() {
+        let tmp_in = NamedTempFile::new().unwrap();
+        let in_path = tmp_in.path().to_str().unwrap().to_string();
+        std::fs::write(&in_path, r#"{"id":"one","vector":[1.0,2.0,3.0]}
+{"id":"two","vector":[4.0,5.0,6.0]}
+{"id":"three","vector":[7.0,8.0,9.0]}"#).unwrap();
+
+        let tmp_out = NamedTempFile::new().unwrap();
+        let out_path = tmp_out.path().to_str().unwrap().to_string();
+
+        let n = compress_stream(&in_path, &out_path, true).expect("compress quantized");
+        assert_eq!(n, 3);
+
+        let ds = vectro_lib::EmbeddingDataset::load(&out_path).expect("load");
+        assert_eq!(ds.len(), 3);
+        assert_eq!(ds.embeddings[0].id, "one");
+    }
+
+    #[test]
+    fn compress_csv_format() {
+        let tmp_in = NamedTempFile::new().unwrap();
+        let in_path = tmp_in.path().to_str().unwrap().to_string();
+        std::fs::write(&in_path, "id1,1.0,2.0,3.0\nid2,4.0,5.0,6.0\n").unwrap();
+
+        let tmp_out = NamedTempFile::new().unwrap();
+        let out_path = tmp_out.path().to_str().unwrap().to_string();
+
+        let n = compress_stream(&in_path, &out_path, false).expect("compress csv");
+        assert_eq!(n, 2);
+
+        let ds = vectro_lib::EmbeddingDataset::load(&out_path).expect("load");
+        assert_eq!(ds.len(), 2);
+    }
+
+    #[test]
+    fn compress_with_empty_lines() {
+        let tmp_in = NamedTempFile::new().unwrap();
+        let in_path = tmp_in.path().to_str().unwrap().to_string();
+        std::fs::write(&in_path, r#"
+{"id":"one","vector":[1.0,0.0]}
+
+{"id":"two","vector":[0.0,1.0]}
+
+"#).unwrap();
+
+        let tmp_out = NamedTempFile::new().unwrap();
+        let out_path = tmp_out.path().to_str().unwrap().to_string();
+
+        let n = compress_stream(&in_path, &out_path, false).expect("compress");
+        assert_eq!(n, 2);
     }
 }

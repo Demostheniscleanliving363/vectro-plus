@@ -369,6 +369,7 @@ pub mod search {
 mod tests {
     use super::*;
     use tempfile::NamedTempFile;
+    use std::io::Write;
 
     #[test]
     fn roundtrip_save_load() {
@@ -383,6 +384,225 @@ mod tests {
         let loaded = EmbeddingDataset::load(&path).expect("load");
         assert_eq!(loaded.len(), 2);
         assert_eq!(loaded.embeddings[0].id, "one");
+    }
+
+    #[test]
+    fn test_embedding_dataset_new_and_len() {
+        let ds = EmbeddingDataset::new();
+        assert_eq!(ds.len(), 0);
+        
+        let mut ds2 = EmbeddingDataset::new();
+        ds2.add(Embedding::new("test", vec![1.0, 2.0, 3.0]));
+        assert_eq!(ds2.len(), 1);
+    }
+
+    #[test]
+    fn test_streaming_format_load() {
+        let tmp = NamedTempFile::new().expect("create temp file");
+        let path = tmp.path().to_str().unwrap().to_string();
+        
+        // Write streaming format manually
+        let mut f = std::fs::File::create(&path).expect("create file");
+        f.write_all(b"VECTRO+STREAM1\n").expect("write header");
+        
+        // Write first embedding
+        let e1 = Embedding::new("test1", vec![1.0, 2.0]);
+        let bytes1 = bincode::serialize(&e1).expect("serialize");
+        let len1 = (bytes1.len() as u32).to_le_bytes();
+        f.write_all(&len1).expect("write len");
+        f.write_all(&bytes1).expect("write bytes");
+        
+        // Write second embedding
+        let e2 = Embedding::new("test2", vec![3.0, 4.0]);
+        let bytes2 = bincode::serialize(&e2).expect("serialize");
+        let len2 = (bytes2.len() as u32).to_le_bytes();
+        f.write_all(&len2).expect("write len");
+        f.write_all(&bytes2).expect("write bytes");
+        
+        drop(f);
+        
+        let loaded = EmbeddingDataset::load(&path).expect("load");
+        assert_eq!(loaded.len(), 2);
+        assert_eq!(loaded.embeddings[0].id, "test1");
+        assert_eq!(loaded.embeddings[1].id, "test2");
+    }
+
+    #[test]
+    fn test_quantized_stream_format_load() {
+        let tmp = NamedTempFile::new().expect("create temp file");
+        let path = tmp.path().to_str().unwrap().to_string();
+        
+        // Create embeddings
+        let e1 = Embedding::new("qtest1", vec![1.0, 2.0, 3.0]);
+        let e2 = Embedding::new("qtest2", vec![4.0, 5.0, 6.0]);
+        let vectors = vec![e1.vector.clone(), e2.vector.clone()];
+        
+        // Quantize
+        let (tables, qvecs) = search::quant::quantize_dataset(&vectors);
+        
+        // Write quantized stream format
+        let mut f = std::fs::File::create(&path).expect("create file");
+        f.write_all(b"VECTRO+QSTREAM1\n").expect("write header");
+        
+        // Write table count and dim
+        let table_count = (tables.len() as u32).to_le_bytes();
+        let dim = (tables.len() as u32).to_le_bytes();
+        f.write_all(&table_count).expect("write table count");
+        f.write_all(&dim).expect("write dim");
+        
+        // Serialize and write tables
+        let tables_blob = bincode::serialize(&tables).expect("serialize tables");
+        let tables_len = (tables_blob.len() as u32).to_le_bytes();
+        f.write_all(&tables_len).expect("write tables len");
+        f.write_all(&tables_blob).expect("write tables");
+        
+        // Write quantized embeddings
+        for (i, qv) in qvecs.iter().enumerate() {
+            let id = if i == 0 { "qtest1" } else { "qtest2" };
+            let rec = (id.to_string(), qv.clone());
+            let bytes = bincode::serialize(&rec).expect("serialize rec");
+            let len = (bytes.len() as u32).to_le_bytes();
+            f.write_all(&len).expect("write len");
+            f.write_all(&bytes).expect("write bytes");
+        }
+        
+        drop(f);
+        
+        let loaded = EmbeddingDataset::load(&path).expect("load");
+        assert_eq!(loaded.len(), 2);
+        assert_eq!(loaded.embeddings[0].id, "qtest1");
+        assert_eq!(loaded.embeddings[1].id, "qtest2");
+    }
+
+    #[test]
+    fn test_cosine_similarity_edge_cases() {
+        use crate::search::cosine;
+        
+        // Different lengths
+        let a = vec![1.0, 2.0];
+        let b = vec![1.0, 2.0, 3.0];
+        assert_eq!(cosine(&a, &b), -1.0);
+        
+        // Zero vectors
+        let zero = vec![0.0, 0.0];
+        let nonzero = vec![1.0, 2.0];
+        assert_eq!(cosine(&zero, &nonzero), -1.0);
+        assert_eq!(cosine(&nonzero, &zero), -1.0);
+        assert_eq!(cosine(&zero, &zero), -1.0);
+    }
+
+    #[test]
+    fn test_searchindex_zero_norm_query() {
+        use crate::search::SearchIndex;
+        
+        let a = Embedding::new("a", vec![1.0, 2.0]);
+        let ds = vec![a];
+        let idx = SearchIndex::from_dataset(&ds);
+        
+        // Query with zero norm
+        let zero_query = vec![0.0, 0.0];
+        let results = idx.top_k(&zero_query, 1);
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_searchindex_from_zero_norm_vectors() {
+        use crate::search::SearchIndex;
+        
+        let a = Embedding::new("zero", vec![0.0, 0.0]);
+        let b = Embedding::new("nonzero", vec![1.0, 2.0]);
+        let ds = vec![a, b];
+        let idx = SearchIndex::from_dataset(&ds);
+        
+        let query = vec![1.0, 0.0];
+        let results = idx.top_k(&query, 2);
+        assert_eq!(results.len(), 2);
+    }
+
+    #[test]
+    fn test_quantized_index_zero_norm() {
+        use crate::search::QuantizedIndex;
+        
+        let a = Embedding::new("zero", vec![0.0, 0.0]);
+        let b = Embedding::new("nonzero", vec![1.0, 2.0]);
+        let ds = vec![a, b];
+        let idx = QuantizedIndex::from_dataset(&ds);
+        
+        let query = vec![1.0, 0.0];
+        let results = idx.top_k(&query, 2);
+        assert_eq!(results.len(), 2);
+    }
+
+    #[test]
+    fn test_quantized_index_zero_query() {
+        use crate::search::QuantizedIndex;
+        
+        let a = Embedding::new("a", vec![1.0, 2.0]);
+        let ds = vec![a];
+        let idx = QuantizedIndex::from_dataset(&ds);
+        
+        let zero_query = vec![0.0, 0.0];
+        let results = idx.top_k(&zero_query, 1);
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_quantized_index_dim_mismatch() {
+        use crate::search::QuantizedIndex;
+        
+        let a = Embedding::new("a", vec![1.0, 2.0]);
+        let ds = vec![a];
+        let idx = QuantizedIndex::from_dataset(&ds);
+        
+        let wrong_query = vec![1.0, 2.0, 3.0];
+        let results = idx.top_k(&wrong_query, 1);
+        assert!(results.is_empty());
+    }
+
+    #[test]
+    fn test_quantized_index_with_precompute() {
+        use crate::search::QuantizedIndex;
+        
+        let a = Embedding::new("a", vec![1.0, 0.0]);
+        let b = Embedding::new("b", vec![0.0, 1.0]);
+        let ds = vec![a, b];
+        let mut idx = QuantizedIndex::from_dataset(&ds);
+        
+        // Test without precompute
+        let query = vec![1.0, 0.0];
+        let results1 = idx.top_k(&query, 1);
+        assert_eq!(results1[0].0, "a");
+        
+        // Test with precompute
+        idx.precompute_normalized();
+        let results2 = idx.top_k(&query, 1);
+        assert_eq!(results2[0].0, "a");
+    }
+
+    #[test]
+    fn test_quant_table_edge_cases() {
+        use crate::search::quant::QuantTable;
+        
+        // Min equals max
+        let table = QuantTable::new(1.0, 1.0);
+        assert_eq!(table.quantize(1.0), 0u8);
+        assert_eq!(table.dequantize(128), 1.0);
+        
+        // Normal range
+        let table2 = QuantTable::new(0.0, 10.0);
+        let q = table2.quantize(5.0);
+        let deq = table2.dequantize(q);
+        assert!((deq - 5.0).abs() < 0.5); // Should be close
+    }
+
+    #[test]
+    fn test_quantize_empty_dataset() {
+        use crate::search::quant::quantize_dataset;
+        
+        let empty: Vec<Vec<f32>> = vec![];
+        let (tables, qvecs) = quantize_dataset(&empty);
+        assert!(tables.is_empty());
+        assert!(qvecs.is_empty());
     }
 
     #[test]
