@@ -230,3 +230,240 @@ pub async fn serve(port: u16) -> anyhow::Result<()> {
     
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[tokio::test]
+    async fn test_app_state_new() {
+        let state = AppState::new();
+        let embeddings = state.embeddings.read().await;
+        assert_eq!(embeddings.len(), 0);
+    }
+
+    #[tokio::test]
+    async fn test_health_handler() {
+        let response = health().await;
+        assert_eq!(response.0.status, "ok");
+        assert!(!response.0.version.is_empty());
+    }
+
+    #[tokio::test]
+    async fn test_stats_empty_state() {
+        let state = AppState::new();
+        let response = stats(State(state)).await;
+        assert_eq!(response.0.count, 0);
+        assert!(response.0.dimensions.is_none());
+        assert!(!response.0.index_loaded);
+    }
+
+    #[tokio::test]
+    async fn test_stats_with_embeddings() {
+        let state = AppState::new();
+        {
+            let mut embeddings = state.embeddings.write().await;
+            embeddings.push(Embedding::new("test", vec![1.0, 2.0, 3.0]));
+        }
+        
+        let response = stats(State(state)).await;
+        assert_eq!(response.0.count, 1);
+        assert_eq!(response.0.dimensions, Some(3));
+    }
+
+    #[tokio::test]
+    async fn test_upload_empty_embeddings() {
+        let state = AppState::new();
+        let payload = UploadRequest {
+            embeddings: vec![],
+        };
+        
+        let result = upload_embeddings(State(state), Json(payload)).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_upload_valid_embeddings() {
+        let state = AppState::new();
+        let payload = UploadRequest {
+            embeddings: vec![
+                Embedding::new("a", vec![1.0, 0.0]),
+                Embedding::new("b", vec![0.0, 1.0]),
+            ],
+        };
+        
+        let result = upload_embeddings(State(state.clone()), Json(payload)).await;
+        assert!(result.is_ok());
+        
+        let response = result.unwrap();
+        assert_eq!(response.0.count, 2);
+        assert_eq!(response.0.dimensions, Some(2));
+        assert!(response.0.index_loaded);
+    }
+
+    #[tokio::test]
+    async fn test_upload_inconsistent_dimensions() {
+        let state = AppState::new();
+        let payload = UploadRequest {
+            embeddings: vec![
+                Embedding::new("a", vec![1.0, 0.0]),
+                Embedding::new("b", vec![0.0, 1.0, 2.0]), // Different dimension
+            ],
+        };
+        
+        let result = upload_embeddings(State(state), Json(payload)).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_search_no_index() {
+        let state = AppState::new();
+        let payload = SearchRequest {
+            query: vec![1.0, 0.0],
+            k: 10,
+        };
+        
+        let result = search(State(state), Json(payload)).await;
+        assert!(result.is_err());
+    }
+
+    #[tokio::test]
+    async fn test_search_with_index() {
+        let state = AppState::new();
+        
+        // Upload embeddings first
+        let upload_payload = UploadRequest {
+            embeddings: vec![
+                Embedding::new("test1", vec![1.0, 0.0]),
+                Embedding::new("test2", vec![0.0, 1.0]),
+            ],
+        };
+        let _ = upload_embeddings(State(state.clone()), Json(upload_payload)).await.unwrap();
+        
+        // Now search
+        let search_payload = SearchRequest {
+            query: vec![1.0, 0.0],
+            k: 1,
+        };
+        
+        let result = search(State(state), Json(search_payload)).await;
+        assert!(result.is_ok());
+        
+        let response = result.unwrap();
+        assert_eq!(response.0.results.len(), 1);
+        assert_eq!(response.0.results[0].id, "test1");
+    }
+
+    #[tokio::test]
+    async fn test_search_wrong_dimension() {
+        let state = AppState::new();
+        
+        // Upload 2D embeddings
+        let upload_payload = UploadRequest {
+            embeddings: vec![
+                Embedding::new("a", vec![1.0, 0.0]),
+            ],
+        };
+        let _ = upload_embeddings(State(state.clone()), Json(upload_payload)).await.unwrap();
+        
+        // Search with 3D query - doesn't error, just gives poor results
+        let search_payload = SearchRequest {
+            query: vec![1.0, 0.0, 0.0],
+            k: 1,
+        };
+        
+        let result = search(State(state), Json(search_payload)).await;
+        assert!(result.is_ok()); // No dimension validation in search
+    }
+
+    #[test]
+    fn test_default_top_k() {
+        assert_eq!(default_top_k(), 10);
+    }
+
+    #[test]
+    fn test_search_request_serde() {
+        let json = r#"{"query": [1.0, 2.0], "k": 5}"#;
+        let req: SearchRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.query, vec![1.0, 2.0]);
+        assert_eq!(req.k, 5);
+    }
+
+    #[test]
+    fn test_search_request_default_k_serde() {
+        let json = r#"{"query": [1.0, 2.0]}"#;
+        let req: SearchRequest = serde_json::from_str(json).unwrap();
+        assert_eq!(req.k, 10);
+    }
+
+    #[test]
+    fn test_index_page_loads() {
+        // Just test that the function exists and returns HTML
+        let runtime = tokio::runtime::Runtime::new().unwrap();
+        runtime.block_on(async {
+            let html = index_page().await;
+            assert!(!html.0.is_empty());
+        });
+    }
+
+    #[tokio::test]
+    async fn test_load_dataset_endpoint() {
+        use axum::extract::Query;
+        use tempfile::NamedTempFile;
+        
+        let state = AppState::new();
+        
+        // Create temp dataset file
+        let tmp = NamedTempFile::new().unwrap();
+        let path = tmp.path().to_str().unwrap().to_string();
+        
+        let mut ds = EmbeddingDataset::new();
+        ds.add(Embedding::new("test1", vec![1.0, 0.0]));
+        ds.add(Embedding::new("test2", vec![0.0, 1.0]));
+        ds.save(&path).unwrap();
+        
+        // Load via endpoint
+        let mut params = std::collections::HashMap::new();
+        params.insert("path".to_string(), path.clone());
+        
+        let result = load_dataset_endpoint(State(state.clone()), Query(params)).await;
+        assert!(result.is_ok());
+        
+        let response = result.unwrap();
+        assert_eq!(response.0.count, 2);
+        assert_eq!(response.0.dimensions, Some(2));
+        assert!(response.0.index_loaded);
+        
+        // Verify state was updated
+        let embeddings = state.embeddings.read().await;
+        assert_eq!(embeddings.len(), 2);
+        
+        let index = state.index.read().await;
+        assert!(index.is_some());
+    }
+
+    #[tokio::test]
+    async fn test_load_dataset_missing_path() {
+        use axum::extract::Query;
+        
+        let state = AppState::new();
+        let params = std::collections::HashMap::new();
+        
+        let result = load_dataset_endpoint(State(state), Query(params)).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().0, StatusCode::BAD_REQUEST);
+    }
+
+    #[tokio::test]
+    async fn test_load_dataset_invalid_file() {
+        use axum::extract::Query;
+        
+        let state = AppState::new();
+        let mut params = std::collections::HashMap::new();
+        params.insert("path".to_string(), "/nonexistent/file.bin".to_string());
+        
+        let result = load_dataset_endpoint(State(state), Query(params)).await;
+        assert!(result.is_err());
+        assert_eq!(result.unwrap_err().0, StatusCode::INTERNAL_SERVER_ERROR);
+    }
+}
