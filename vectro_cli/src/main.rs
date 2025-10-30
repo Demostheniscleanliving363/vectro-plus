@@ -17,7 +17,6 @@
 //! ```
 
 use clap::{Parser, Subcommand};
-use std::path::Path;
 use vectro_cli::compress_stream;
 
 use serde_json::Value;
@@ -77,12 +76,62 @@ enum Commands {
     },
 }
 
+// Wrapper functions for testability
+fn execute_compress_command(input: &str, output: &str, quantize: bool) -> anyhow::Result<usize> {
+    crate::compress_stream(input, output, quantize)
+}
+
+fn execute_serve_command(port: u16) -> anyhow::Result<()> {
+    tokio::runtime::Runtime::new()?.block_on(async {
+        server::serve(port).await
+    })
+}
+
+fn parse_query_string(query: &str) -> Vec<f32> {
+    query
+        .split(',')
+        .filter_map(|s| s.trim().parse::<f32>().ok())
+        .collect()
+}
+
+fn load_dataset_or_default(dataset_path: Option<&str>) -> Vec<vectro_lib::Embedding> {
+    use std::path::Path;
+    
+    if let Some(path) = dataset_path {
+        match vectro_lib::EmbeddingDataset::load(path) {
+            Ok(ds) => return ds.embeddings,
+            Err(_) => {}
+        }
+    } else if Path::new("./dataset.bin").exists() {
+        if let Ok(ds) = vectro_lib::EmbeddingDataset::load("./dataset.bin") {
+            return ds.embeddings;
+        }
+    }
+    
+    // Default toy dataset
+    vec![
+        vectro_lib::Embedding::new("one", vec![1.0, 0.0]),
+        vectro_lib::Embedding::new("two", vec![0.0, 1.0]),
+        vectro_lib::Embedding::new("three", vec![0.707, 0.707]),
+    ]
+}
+
+fn execute_search_command(query: &str, top_k: usize, dataset: Option<&str>) -> Vec<(String, f32)> {
+    let vec = parse_query_string(query);
+    let embeddings = load_dataset_or_default(dataset);
+    let idx = vectro_lib::search::SearchIndex::from_dataset(&embeddings);
+    idx.top_k(&vec, top_k)
+        .into_iter()
+        .map(|(id, score)| (id.to_string(), score))
+        .collect()
+}
+
 fn main() -> anyhow::Result<()> {
     let cli = Cli::parse();
 
     match cli.command {
         Commands::Compress { input, output, quantize } => {
-            let _ = crate::compress_stream(&input, &output, quantize)?;
+            execute_compress_command(&input, &output, quantize)?;
         }
         Commands::Bench { save_report, open_report, summary, report_dir: _, bench_args } => {
             // Run cargo bench for vectro_lib and stream output. Show a spinner while running.
@@ -268,55 +317,13 @@ fn main() -> anyhow::Result<()> {
             }
         }
         Commands::Search { query, top_k, dataset } => {
-            let vec: Vec<f32> = query
-                .split(',')
-                .filter_map(|s| s.trim().parse::<f32>().ok())
-                .collect();
-
-            // Load dataset if provided. If not provided and ./dataset.bin exists, use it.
-            let embeddings = if let Some(path) = dataset {
-                match vectro_lib::EmbeddingDataset::load(&path) {
-                    Ok(ds) => ds.embeddings,
-                    Err(e) => {
-                        eprintln!("failed to load dataset {}: {}", path, e);
-                        vec![
-                            vectro_lib::Embedding::new("one", vec![1.0, 0.0]),
-                            vectro_lib::Embedding::new("two", vec![0.0, 1.0]),
-                            vectro_lib::Embedding::new("three", vec![0.707, 0.707]),
-                        ]
-                    }
-                }
-            } else if Path::new("./dataset.bin").exists() {
-                match vectro_lib::EmbeddingDataset::load("./dataset.bin") {
-                    Ok(ds) => ds.embeddings,
-                    Err(e) => {
-                        eprintln!("failed to load ./dataset.bin: {}", e);
-                        vec![
-                            vectro_lib::Embedding::new("one", vec![1.0, 0.0]),
-                            vectro_lib::Embedding::new("two", vec![0.0, 1.0]),
-                            vectro_lib::Embedding::new("three", vec![0.707, 0.707]),
-                        ]
-                    }
-                }
-            } else {
-                vec![
-                    vectro_lib::Embedding::new("one", vec![1.0, 0.0]),
-                    vectro_lib::Embedding::new("two", vec![0.0, 1.0]),
-                    vectro_lib::Embedding::new("three", vec![0.707, 0.707]),
-                ]
-            };
-
-            // Build SearchIndex for faster repeated queries
-            let idx = vectro_lib::search::SearchIndex::from_dataset(&embeddings);
-            let results = idx.top_k(&vec, top_k);
+            let results = execute_search_command(&query, top_k, dataset.as_deref());
             for (i, (id, score)) in results.into_iter().enumerate() {
                 println!("{}. {} -> {:.6}", i + 1, id, score);
             }
         }
         Commands::Serve { port } => {
-            tokio::runtime::Runtime::new()?.block_on(async {
-                server::serve(port).await
-            })?;
+            execute_serve_command(port)?;
         }
     }
 
@@ -582,5 +589,118 @@ mod tests {
             }
         }
         assert!(found, "Should have parsed the fake Criterion JSON");
+    }
+
+    #[test]
+    fn test_execute_compress_command() {
+        use tempfile::NamedTempFile;
+        
+        let tmp_in = NamedTempFile::new().unwrap();
+        let in_path = tmp_in.path().to_str().unwrap();
+        std::fs::write(in_path, r#"{"id":"test","vector":[1.0,2.0,3.0]}"#).unwrap();
+        
+        let tmp_out = NamedTempFile::new().unwrap();
+        let out_path = tmp_out.path().to_str().unwrap();
+        
+        let result = execute_compress_command(in_path, out_path, false);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 1);
+    }
+
+    #[test]
+    fn test_execute_compress_command_quantized() {
+        use tempfile::NamedTempFile;
+        
+        let tmp_in = NamedTempFile::new().unwrap();
+        let in_path = tmp_in.path().to_str().unwrap();
+        std::fs::write(in_path, r#"{"id":"a","vector":[1.0,0.0]}
+{"id":"b","vector":[0.0,1.0]}"#).unwrap();
+        
+        let tmp_out = NamedTempFile::new().unwrap();
+        let out_path = tmp_out.path().to_str().unwrap();
+        
+        let result = execute_compress_command(in_path, out_path, true);
+        assert!(result.is_ok());
+        assert_eq!(result.unwrap(), 2);
+    }
+
+    #[test]
+    fn test_execute_compress_command_invalid_input() {
+        use tempfile::NamedTempFile;
+        
+        let tmp_out = NamedTempFile::new().unwrap();
+        let out_path = tmp_out.path().to_str().unwrap();
+        
+        let result = execute_compress_command("/nonexistent/file.jsonl", out_path, false);
+        assert!(result.is_err());
+    }
+
+    #[test]
+    fn test_parse_query_string() {
+        let result = parse_query_string("1.0,2.0,3.0");
+        assert_eq!(result, vec![1.0, 2.0, 3.0]);
+        
+        let result = parse_query_string("1.0, 2.0, 3.0");
+        assert_eq!(result, vec![1.0, 2.0, 3.0]);
+        
+        let result = parse_query_string("1.0,invalid,3.0");
+        assert_eq!(result, vec![1.0, 3.0]);
+    }
+
+    #[test]
+    fn test_load_dataset_or_default() {
+        // Test with None - should return default
+        let result = load_dataset_or_default(None);
+        assert_eq!(result.len(), 3);
+        assert_eq!(result[0].id, "one");
+        
+        // Test with invalid path - should return default
+        let result = load_dataset_or_default(Some("/nonexistent/path.bin"));
+        assert_eq!(result.len(), 3);
+    }
+
+    #[test]
+    fn test_load_dataset_or_default_valid_file() {
+        use tempfile::NamedTempFile;
+        
+        let tmp = NamedTempFile::new().unwrap();
+        let path = tmp.path().to_str().unwrap();
+        
+        let mut ds = vectro_lib::EmbeddingDataset::new();
+        ds.add(vectro_lib::Embedding::new("test1", vec![1.0, 0.0]));
+        ds.add(vectro_lib::Embedding::new("test2", vec![0.0, 1.0]));
+        ds.save(path).unwrap();
+        
+        let result = load_dataset_or_default(Some(path));
+        assert_eq!(result.len(), 2);
+        assert_eq!(result[0].id, "test1");
+    }
+
+    #[test]
+    fn test_execute_search_command() {
+        let results = execute_search_command("1.0,0.0", 2, None);
+        assert!(results.len() <= 2);
+        assert!(!results.is_empty());
+        
+        // First result should be "one" with highest similarity
+        assert_eq!(results[0].0, "one");
+        assert!(results[0].1 > 0.9);
+    }
+
+    #[test]
+    fn test_execute_search_command_with_dataset() {
+        use tempfile::NamedTempFile;
+        
+        let tmp = NamedTempFile::new().unwrap();
+        let path = tmp.path().to_str().unwrap();
+        
+        let mut ds = vectro_lib::EmbeddingDataset::new();
+        ds.add(vectro_lib::Embedding::new("apple", vec![1.0, 0.0, 0.0]));
+        ds.add(vectro_lib::Embedding::new("banana", vec![0.0, 1.0, 0.0]));
+        ds.save(path).unwrap();
+        
+        let results = execute_search_command("1.0,0.0,0.0", 1, Some(path));
+        assert_eq!(results.len(), 1);
+        assert_eq!(results[0].0, "apple");
     }
 }

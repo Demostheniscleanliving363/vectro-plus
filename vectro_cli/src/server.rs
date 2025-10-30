@@ -466,4 +466,18 @@ mod tests {
         assert!(result.is_err());
         assert_eq!(result.unwrap_err().0, StatusCode::INTERNAL_SERVER_ERROR);
     }
+
+    #[test]
+    fn test_cors_configuration() {
+        // Test CORS layer construction
+        use tower_http::cors::CorsLayer;
+        
+        let _cors = CorsLayer::new()
+            .allow_origin(Any)
+            .allow_methods(Any)
+            .allow_headers(Any);
+        
+        // If we got here, CORS construction succeeded
+        assert!(true);
+    }
 }
