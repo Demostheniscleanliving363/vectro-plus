@@ -196,26 +196,26 @@ async fn index_page() -> Html<String> {
     Html(include_str!("../static/index.html").to_string())
 }
 
-pub async fn serve(port: u16) -> anyhow::Result<()> {
-    let state = AppState::new();
-    
-    // Configure CORS
-    let cors = CorsLayer::new()
+fn build_cors_layer() -> CorsLayer {
+    CorsLayer::new()
         .allow_origin(Any)
         .allow_methods(Any)
-        .allow_headers(Any);
-    
-    let app = Router::new()
+        .allow_headers(Any)
+}
+
+fn build_router(state: AppState) -> Router {
+    Router::new()
         .route("/", get(index_page))
         .route("/health", get(health))
         .route("/api/stats", get(stats))
         .route("/api/search", post(search))
         .route("/api/upload", post(upload_embeddings))
         .route("/api/load", get(load_dataset_endpoint))
-        .layer(cors)
-        .with_state(state);
-    
-    let addr = format!("0.0.0.0:{}", port);
+        .layer(build_cors_layer())
+        .with_state(state)
+}
+
+fn print_server_info(port: u16) {
     println!("🚀 Vectro+ server starting on http://localhost:{}", port);
     println!("📊 Dashboard: http://localhost:{}", port);
     println!("🔍 API endpoints:");
@@ -224,6 +224,14 @@ pub async fn serve(port: u16) -> anyhow::Result<()> {
     println!("   POST /api/search");
     println!("   POST /api/upload");
     println!("   GET  /api/load?path=<path>");
+}
+
+pub async fn serve(port: u16) -> anyhow::Result<()> {
+    let state = AppState::new();
+    let app = build_router(state);
+    let addr = format!("0.0.0.0:{}", port);
+    
+    print_server_info(port);
     
     let listener = tokio::net::TcpListener::bind(&addr).await?;
     axum::serve(listener, app).await?;
@@ -469,15 +477,24 @@ mod tests {
 
     #[test]
     fn test_cors_configuration() {
-        // Test CORS layer construction
-        use tower_http::cors::CorsLayer;
-        
-        let _cors = CorsLayer::new()
-            .allow_origin(Any)
-            .allow_methods(Any)
-            .allow_headers(Any);
-        
+        // Test build_cors_layer function
+        let _cors = build_cors_layer();
         // If we got here, CORS construction succeeded
         // Test passes by not panicking
+    }
+
+    #[test]
+    fn test_build_router() {
+        // Test that we can build the router
+        let state = AppState::new();
+        let _router = build_router(state);
+        // If we got here, router construction succeeded
+    }
+
+    #[test]
+    fn test_print_server_info() {
+        // Test that print_server_info doesn't panic
+        print_server_info(8080);
+        print_server_info(3000);
     }
 }

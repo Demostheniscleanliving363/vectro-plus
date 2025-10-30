@@ -399,10 +399,19 @@ mod tests {
     fn test_embedding_dataset_new_and_len() {
         let ds = EmbeddingDataset::new();
         assert_eq!(ds.len(), 0);
+        assert!(ds.is_empty());
         
         let mut ds2 = EmbeddingDataset::new();
         ds2.add(Embedding::new("test", vec![1.0, 2.0, 3.0]));
         assert_eq!(ds2.len(), 1);
+        assert!(!ds2.is_empty());
+    }
+
+    #[test]
+    fn test_embedding_dataset_default() {
+        let ds: EmbeddingDataset = Default::default();
+        assert_eq!(ds.len(), 0);
+        assert!(ds.is_empty());
     }
 
     #[test]

@@ -133,7 +133,7 @@ fn main() -> anyhow::Result<()> {
         Commands::Bench { save_report, open_report, summary, report_dir: _, bench_args } => {
             // Run cargo bench for vectro_lib and stream output. Show a spinner while running.
             use indicatif::{ProgressBar, ProgressStyle};
-            use std::process::{Command, Stdio};
+            use std::process::Command;
             use std::io::{BufRead, BufReader};
             use std::thread;
             use std::fs;
@@ -144,18 +144,7 @@ fn main() -> anyhow::Result<()> {
             pb.enable_steady_tick(std::time::Duration::from_millis(80));
             pb.set_message("running benches...");
 
-            let mut cmd = Command::new("cargo");
-            cmd.arg("bench").arg("-p").arg("vectro_lib");
-            
-            // Add extra bench args if provided
-            if let Some(extra) = bench_args {
-                for arg in extra.split_whitespace() {
-                    cmd.arg(arg);
-                }
-            }
-            
-            cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
-
+            let mut cmd = build_bench_command(bench_args.as_deref());
             let mut child = cmd.spawn().expect("failed to spawn cargo bench");
 
             // stream stdout
@@ -225,12 +214,7 @@ fn main() -> anyhow::Result<()> {
                             if !rows.is_empty() {
                                 // try to load previous history for deltas
                                 let history_path = PathBuf::from(".bench_history.json");
-                                let mut history: std::collections::HashMap<String, f64> = std::collections::HashMap::new();
-                                if let Ok(txt) = std::fs::read_to_string(&history_path) {
-                                    if let Ok(hm) = serde_json::from_str::<std::collections::HashMap<String, f64>>(&txt) {
-                                        history = hm;
-                                    }
-                                }
+                                let history = load_bench_history(&history_path);
 
                                 // print pretty table
                                 println!("\nBenchmark summaries:");
@@ -240,15 +224,7 @@ fn main() -> anyhow::Result<()> {
                                     let med_s = med.map(|v| format!("{:.6}", v)).unwrap_or_else(|| "-".to_string());
                                     let mean_s = mean.map(|v| format!("{:.6}", v)).unwrap_or_else(|| "-".to_string());
                                     let unit_s = unit.clone().unwrap_or_else(|| "".to_string());
-                                    // compute delta vs previous median
-                                    let delta_s = if let Some(prev) = history.get(f) {
-                                        if let Some(curr) = med {
-                                            if *prev != 0.0 {
-                                                let pct = (*curr - *prev) / *prev * 100.0;
-                                                format!("{:+.2}%", pct)
-                                            } else { "n/a".to_string() }
-                                        } else { "-".to_string() }
-                                    } else { "-".to_string() };
+                                    let delta_s = format_delta(*med, &history, f);
                                     println!("{:<60} {:>12} {:>12} {:>8} {:>8}", f, med_s, mean_s, unit_s, delta_s);
                                 }
 
@@ -257,9 +233,7 @@ fn main() -> anyhow::Result<()> {
                                 for (f, med, _mean, _unit) in &rows {
                                     if let Some(m) = med { new_hist.insert(f.clone(), *m); }
                                 }
-                                if let Ok(out) = serde_json::to_string_pretty(&new_hist) {
-                                    let _ = std::fs::write(&history_path, out);
-                                }
+                                let _ = save_bench_history(&history_path, &new_hist);
 
                                 // Generate HTML summary in criterion dir
                                 let html_summary = generate_html_summary(&rows, &history);
@@ -325,6 +299,97 @@ fn main() -> anyhow::Result<()> {
     }
 
     Ok(())
+}
+
+/// Build cargo bench command with optional extra args
+fn build_bench_command(bench_args: Option<&str>) -> std::process::Command {
+    use std::process::{Command, Stdio};
+    let mut cmd = Command::new("cargo");
+    cmd.arg("bench").arg("-p").arg("vectro_lib");
+    
+    if let Some(extra) = bench_args {
+        for arg in extra.split_whitespace() {
+            cmd.arg(arg);
+        }
+    }
+    
+    cmd.stdout(Stdio::piped()).stderr(Stdio::piped());
+    cmd
+}
+
+/// Load benchmark history from file
+fn load_bench_history(history_path: &std::path::Path) -> std::collections::HashMap<String, f64> {
+    use std::fs;
+    let mut history: std::collections::HashMap<String, f64> = std::collections::HashMap::new();
+    if let Ok(txt) = fs::read_to_string(history_path) {
+        if let Ok(hm) = serde_json::from_str::<std::collections::HashMap<String, f64>>(&txt) {
+            history = hm;
+        }
+    }
+    history
+}
+
+/// Save benchmark history to file
+fn save_bench_history(history_path: &std::path::Path, history: &std::collections::HashMap<String, f64>) -> std::io::Result<()> {
+    use std::fs;
+    let out = serde_json::to_string_pretty(history)?;
+    fs::write(history_path, out)
+}
+
+/// Calculate delta percentage between current and previous values
+fn calculate_delta(current: f64, previous: f64) -> Option<f64> {
+    if previous != 0.0 {
+        Some((current - previous) / previous * 100.0)
+    } else {
+        None
+    }
+}
+
+/// Format delta for display
+fn format_delta(med: Option<f64>, history: &std::collections::HashMap<String, f64>, name: &str) -> String {
+    if let Some(prev) = history.get(name) {
+        if let Some(curr) = med {
+            if let Some(pct) = calculate_delta(curr, *prev) {
+                format!("{:+.2}%", pct)
+            } else {
+                "n/a".to_string()
+            }
+        } else {
+            "-".to_string()
+        }
+    } else {
+        "-".to_string()
+    }
+}
+
+/// Calculate delta class for HTML styling
+fn get_delta_class(pct: f64) -> &'static str {
+    if pct > 0.5 {
+        "delta-positive"
+    } else if pct < -0.5 {
+        "delta-negative"
+    } else {
+        "delta-neutral"
+    }
+}
+
+/// Format delta with class for HTML
+fn format_delta_html(med: Option<f64>, history: &std::collections::HashMap<String, f64>, name: &str) -> (String, &'static str) {
+    if let Some(prev) = history.get(name) {
+        if let Some(curr) = med {
+            if *prev != 0.0 {
+                let pct = (curr - *prev) / *prev * 100.0;
+                let class = get_delta_class(pct);
+                (format!("{:+.2}%", pct), class)
+            } else {
+                ("n/a".to_string(), "delta-neutral")
+            }
+        } else {
+            ("-".to_string(), "delta-neutral")
+        }
+    } else {
+        ("-".to_string(), "delta-neutral")
+    }
 }
 
 /// Recursively search a serde_json::Value for the first numeric value keyed by `key` and return it as f64.
@@ -442,21 +507,7 @@ fn generate_html_summary(rows: &[(String, Option<f64>, Option<f64>, Option<Strin
         let mean_str = mean.map(|v| format!("{:.6}", v)).unwrap_or_else(|| "-".to_string());
         let unit_str = unit.clone().unwrap_or_else(|| "".to_string());
         
-        let (delta_str, delta_class) = if let Some(prev) = history.get(name) {
-            if let Some(curr) = med {
-                if *prev != 0.0 {
-                    let pct = (*curr - *prev) / *prev * 100.0;
-                    let class = if pct > 0.5 { "delta-positive" } else if pct < -0.5 { "delta-negative" } else { "delta-neutral" };
-                    (format!("{:+.2}%", pct), class)
-                } else {
-                    ("n/a".to_string(), "delta-neutral")
-                }
-            } else {
-                ("-".to_string(), "delta-neutral")
-            }
-        } else {
-            ("-".to_string(), "delta-neutral")
-        };
+        let (delta_str, delta_class) = format_delta_html(*med, history, name);
         
         html.push_str(&format!("            <tr>\n                <td>{}</td><td class=\"number\">{}</td><td class=\"number\">{}</td><td>{}</td><td class=\"number {}\">  {}</td>\n            </tr>\n",
             name, med_str, mean_str, unit_str, delta_class, delta_str));
@@ -816,5 +867,125 @@ mod tests {
             }
             _ => panic!("Expected Bench command"),
         }
+    }
+
+    #[test]
+    fn test_build_bench_command() {
+        let cmd = build_bench_command(None);
+        let program = cmd.get_program();
+        assert_eq!(program, "cargo");
+    }
+
+    #[test]
+    fn test_build_bench_command_with_args() {
+        let cmd = build_bench_command(Some("--verbose"));
+        let program = cmd.get_program();
+        assert_eq!(program, "cargo");
+    }
+
+    #[test]
+    fn test_load_bench_history_missing_file() {
+        let temp_dir = tempfile::tempdir().unwrap();
+        let history_path = temp_dir.path().join("nonexistent.json");
+        let history = load_bench_history(&history_path);
+        assert!(history.is_empty());
+    }
+
+    #[test]
+    fn test_load_save_bench_history() {
+        use std::collections::HashMap;
+        let temp_dir = tempfile::tempdir().unwrap();
+        let history_path = temp_dir.path().join("history.json");
+        
+        let mut history = HashMap::new();
+        history.insert("test_bench".to_string(), 123.456);
+        
+        save_bench_history(&history_path, &history).unwrap();
+        let loaded = load_bench_history(&history_path);
+        
+        assert_eq!(loaded.len(), 1);
+        assert_eq!(loaded.get("test_bench"), Some(&123.456));
+    }
+
+    #[test]
+    fn test_calculate_delta() {
+        // Normal case
+        let delta = calculate_delta(110.0, 100.0);
+        assert_eq!(delta, Some(10.0));
+        
+        // Decrease
+        let delta = calculate_delta(90.0, 100.0);
+        assert_eq!(delta, Some(-10.0));
+        
+        // Zero previous
+        let delta = calculate_delta(100.0, 0.0);
+        assert_eq!(delta, None);
+    }
+
+    #[test]
+    fn test_format_delta() {
+        use std::collections::HashMap;
+        
+        let mut history = HashMap::new();
+        history.insert("bench1".to_string(), 100.0);
+        
+        // With history and current value
+        let delta_str = format_delta(Some(110.0), &history, "bench1");
+        assert_eq!(delta_str, "+10.00%");
+        
+        // No history
+        let delta_str = format_delta(Some(110.0), &history, "bench2");
+        assert_eq!(delta_str, "-");
+        
+        // No current value
+        let delta_str = format_delta(None, &history, "bench1");
+        assert_eq!(delta_str, "-");
+    }
+
+    #[test]
+    fn test_format_delta_zero_previous() {
+        use std::collections::HashMap;
+        
+        let mut history = HashMap::new();
+        history.insert("bench1".to_string(), 0.0);
+        
+        let delta_str = format_delta(Some(110.0), &history, "bench1");
+        assert_eq!(delta_str, "n/a");
+    }
+
+    #[test]
+    fn test_get_delta_class() {
+        assert_eq!(get_delta_class(1.0), "delta-positive");
+        assert_eq!(get_delta_class(-1.0), "delta-negative");
+        assert_eq!(get_delta_class(0.3), "delta-neutral");
+        assert_eq!(get_delta_class(-0.3), "delta-neutral");
+    }
+
+    #[test]
+    fn test_format_delta_html() {
+        use std::collections::HashMap;
+        
+        let mut history = HashMap::new();
+        history.insert("bench1".to_string(), 100.0);
+        
+        // Positive delta
+        let (delta_str, class) = format_delta_html(Some(110.0), &history, "bench1");
+        assert_eq!(delta_str, "+10.00%");
+        assert_eq!(class, "delta-positive");
+        
+        // Negative delta
+        let (delta_str, class) = format_delta_html(Some(90.0), &history, "bench1");
+        assert_eq!(delta_str, "-10.00%");
+        assert_eq!(class, "delta-negative");
+        
+        // Neutral delta
+        let (delta_str, class) = format_delta_html(Some(100.3), &history, "bench1");
+        assert_eq!(delta_str, "+0.30%");
+        assert_eq!(class, "delta-neutral");
+        
+        // No history
+        let (delta_str, class) = format_delta_html(Some(110.0), &history, "bench2");
+        assert_eq!(delta_str, "-");
+        assert_eq!(class, "delta-neutral");
     }
 }
