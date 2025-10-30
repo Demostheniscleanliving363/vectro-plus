@@ -21,7 +21,7 @@ use vectro_cli::compress_stream;
 
 use serde_json::Value;
 
-mod server;
+pub mod server;
 
 #[derive(Parser)]
 #[command(name = "vectro")]
