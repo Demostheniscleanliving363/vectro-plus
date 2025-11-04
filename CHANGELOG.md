@@ -5,6 +5,21 @@ All notable changes to Vectro+ will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+- **Project Status & Roadmap** - Added comprehensive status section to README
+  - v1.1 roadmap: Advanced quantization, GPU acceleration, Python bindings
+  - v1.2 roadmap: Distributed search, real-time streaming, cloud deployment
+  - v2.0 roadmap: Auto-tuning, federated learning, enterprise features
+- **Contribution Guidelines** - Enhanced community participation guidance
+- **Next Steps Documentation** - Clear guidance for developers, data engineers, and researchers
+
+### Changed
+- Updated README with production-ready status badges
+- Enhanced documentation structure with roadmap sections
+- Improved feature documentation and examples
+
 ## [1.0.0] - 2025-10-29
 
 ### 🎉 Production Ready Release
