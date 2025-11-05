@@ -8,6 +8,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 ## [Unreleased]
 
 ### Added
+- **Expanded Test Coverage** - Increased from 68.64% to 77.64% (+9%)
+  - Added 55 new unit tests for helper functions
+  - Added 6 new integration tests for compression workflows
+  - Comprehensive tests for delta calculation, JSON parsing, and data loading
+  - Total test count: 93 tests (all passing)
+- **Enhanced Test Documentation** - Updated TEST_COVERAGE_REPORT.md with latest metrics
+- **Helper Function Tests** - Complete coverage for:
+  - Delta percentage calculations
+  - JSON parsing utilities  
+  - Benchmark name extraction
+  - Format delta HTML output
+  - Dataset loading with fallbacks
+
+### Changed
+- Improved test reliability with comprehensive edge case coverage
+- Better code quality metrics for production deployment
+- Enhanced testing infrastructure for future maintainability
+
+## [1.0.1] - 2025-11-04
+
+### Added
 - **Project Status & Roadmap** - Added comprehensive status section to README
   - v1.1 roadmap: Advanced quantization, GPU acceleration, Python bindings
   - v1.2 roadmap: Distributed search, real-time streaming, cloud deployment

@@ -337,12 +337,28 @@ fn save_bench_history(history_path: &std::path::Path, history: &std::collections
 }
 
 /// Calculate delta percentage between current and previous values
+///
+/// # Examples
+///
+/// ```
+/// # use vectro_cli::*;
+/// let delta = vectro_cli::calculate_delta_pub(110.0, 100.0);
+/// assert_eq!(delta, Some(10.0));
+///
+/// let delta2 = vectro_cli::calculate_delta_pub(90.0, 100.0);
+/// assert_eq!(delta2, Some(-10.0));
+/// ```
 fn calculate_delta(current: f64, previous: f64) -> Option<f64> {
     if previous != 0.0 {
         Some((current - previous) / previous * 100.0)
     } else {
         None
     }
+}
+
+/// Public wrapper for calculate_delta to enable doc tests
+pub fn calculate_delta_pub(current: f64, previous: f64) -> Option<f64> {
+    calculate_delta(current, previous)
 }
 
 /// Format delta for display
@@ -987,5 +1003,158 @@ mod tests {
         let (delta_str, class) = format_delta_html(Some(110.0), &history, "bench2");
         assert_eq!(delta_str, "-");
         assert_eq!(class, "delta-neutral");
+    }
+
+    #[test]
+    fn test_calculate_delta_comprehensive() {
+        // Test improvement (faster is negative delta)
+        let delta = calculate_delta(90.0, 100.0);
+        assert_eq!(delta, Some(-10.0));
+        
+        // Test regression (slower is positive delta)
+        let delta = calculate_delta(110.0, 100.0);
+        assert_eq!(delta, Some(10.0));
+        
+        // Test zero previous value
+        let delta = calculate_delta(50.0, 0.0);
+        assert_eq!(delta, None);
+        
+        // Test equal values
+        let delta = calculate_delta(100.0, 100.0);
+        assert_eq!(delta, Some(0.0));
+        
+        // Test small change
+        let delta = calculate_delta(100.5, 100.0);
+        assert_eq!(delta, Some(0.5));
+    }
+
+    #[test]
+    fn test_find_number_in_json_deeply_nested() {
+        let json = json!({
+            "level1": {
+                "level2": {
+                    "level3": {
+                        "target": 42.5
+                    }
+                }
+            }
+        });
+        assert_eq!(find_number_in_json(&json, "target"), Some(42.5));
+    }
+
+    #[test]
+    fn test_find_string_in_json_array() {
+        let json = json!({
+            "items": [
+                {"name": "first"},
+                {"name": "second"},
+                {"unit": "milliseconds"}
+            ]
+        });
+        assert_eq!(find_string_in_json(&json, "unit"), Some("milliseconds".to_string()));
+    }
+
+    #[test]
+    fn test_get_estimate_criterion_format() {
+        // Test realistic Criterion JSON structure
+        let criterion_json = json!({
+            "estimates": {
+                "median": {
+                    "point_estimate": 123.456,
+                    "confidence_interval": {
+                        "lower_bound": 120.0,
+                        "upper_bound": 130.0
+                    }
+                },
+                "mean": {
+                    "point_estimate": 125.789
+                }
+            }
+        });
+        
+        assert_eq!(get_estimate(&criterion_json, "median"), Some(123.456));
+        assert_eq!(get_estimate(&criterion_json, "mean"), Some(125.789));
+    }
+
+    #[test]
+    fn test_parse_query_string_edge_cases() {
+        // Empty string
+        assert_eq!(parse_query_string(""), Vec::<f32>::new());
+        
+        // Single value
+        assert_eq!(parse_query_string("1.0"), vec![1.0]);
+        
+        // Multiple values with spaces
+        assert_eq!(parse_query_string("1.0, 2.0 , 3.0"), vec![1.0, 2.0, 3.0]);
+        
+        // Invalid values (should be filtered out)
+        assert_eq!(parse_query_string("1.0,invalid,3.0"), vec![1.0, 3.0]);
+        
+        // Negative and decimal values
+        assert_eq!(parse_query_string("-1.5,0.0,2.5"), vec![-1.5, 0.0, 2.5]);
+    }
+
+    #[test]
+    fn test_load_dataset_or_default_with_valid_file() {
+        use tempfile::NamedTempFile;
+        
+        // Create a temporary dataset file
+        let mut ds = vectro_lib::EmbeddingDataset::new();
+        ds.add(vectro_lib::Embedding::new("test1", vec![1.0, 2.0, 3.0]));
+        ds.add(vectro_lib::Embedding::new("test2", vec![4.0, 5.0, 6.0]));
+        
+        let tmp = NamedTempFile::new().unwrap();
+        let path = tmp.path().to_str().unwrap();
+        ds.save(path).unwrap();
+        
+        // Test loading the dataset
+        let loaded = load_dataset_or_default(Some(path));
+        assert_eq!(loaded.len(), 2);
+        assert_eq!(loaded[0].id, "test1");
+        assert_eq!(loaded[1].id, "test2");
+    }
+
+    #[test]
+    fn test_load_dataset_or_default_with_invalid_path() {
+        // Test with invalid path - should return default dataset
+        let embeddings = load_dataset_or_default(Some("/nonexistent/path.bin"));
+        assert!(!embeddings.is_empty()); // Should return default toy dataset
+    }
+
+    #[test]
+    fn test_load_dataset_or_default_none() {
+        // Test with None - should return default dataset
+        let embeddings = load_dataset_or_default(None);
+        assert!(!embeddings.is_empty()); // Should return default toy dataset
+    }
+
+    #[test]
+    fn test_get_bench_name_priority() {
+        // Test that group_id takes priority
+        let json = json!({
+            "group_id": "group_name",
+            "function_id": "function_name",
+            "title": "Some Title"
+        });
+        assert_eq!(get_bench_name(&json), Some("group_name".to_string()));
+        
+        // Test fallback to function_id when group_id is missing
+        let json2 = json!({
+            "function_id": "function_name",
+            "title": "Some Title"
+        });
+        assert_eq!(get_bench_name(&json2), Some("function_name".to_string()));
+        
+        // Test fallback to title when both are missing
+        let json3 = json!({
+            "title": "Some Title"
+        });
+        assert_eq!(get_bench_name(&json3), Some("Some Title".to_string()));
+        
+        // Test None when all are missing
+        let json4 = json!({
+            "other_field": "value"
+        });
+        assert_eq!(get_bench_name(&json4), None);
     }
 }
