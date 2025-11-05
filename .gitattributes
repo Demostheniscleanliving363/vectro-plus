@@ -1,0 +1,8 @@
+# Exclude static assets and generated files from language statistics
+vectro_cli/static/* linguist-vendored
+coverage/* linguist-generated
+*.html linguist-documentation
+
+# Mark demo/test scripts as documentation
+demo*.sh linguist-documentation
+scripts/*.py linguist-vendored

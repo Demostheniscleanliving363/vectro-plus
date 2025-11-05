@@ -17,7 +17,9 @@
 
 **🗜️ 75-90% Compression** • **⚡ Sub-ms Search** • **🌐 Web UI + REST API**
 
-A Rust-first toolkit for streaming compression, scalar quantization, and blazing-fast similarity search of large embedding datasets.
+A pure Rust toolkit for streaming compression, scalar quantization, and blazing-fast similarity search of large embedding datasets.
+
+**Built entirely in Rust** for maximum performance, safety, and reliability.
 
 [Quick Start](#-quick-start) • [Features](#-features) • [Benchmarks](#-benchmarks--quality) • [Web UI](#-web-ui-demo) • [Docs](#-documentation)
 

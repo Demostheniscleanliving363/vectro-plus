@@ -33,3 +33,7 @@ sample.jsonl
 *.jsonl
 vectro.code-workspace
 *.code-workspace
+
+# Coverage reports (generated files)
+coverage/
+tarpaulin-report.html
