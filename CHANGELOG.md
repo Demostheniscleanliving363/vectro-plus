@@ -5,6 +5,69 @@ All notable changes to Vectro+ will be documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+# Changelog
+
+All notable changes to Vectro+ will be documented in this file.
+
+The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
+and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
+
+## [1.1.0] - 2024-12-19
+
+### ✨ Added - Python Bindings & Enhanced APIs
+
+#### 🐍 Major Feature: Python Integration
+- **Native Python bindings** using PyO3 for zero-copy NumPy integration
+- **Complete Python package** (`vectro_plus`) with high-level API
+- **Comprehensive Python test suite** with quality analysis tools
+- **Performance benchmarking utilities** directly from Python
+- **Example scripts and documentation** for Python workflows
+
+#### 🔧 Python API Components
+- `PyEmbedding`, `PyEmbeddingDataset` - Core data structures with Pythonic interface
+- `PySearchIndex`, `PyQuantizedIndex` - Fast search indices with NumPy integration
+- `compress_embeddings()` - One-line compression and indexing
+- `analyze_compression_quality()` - Quality metrics and compression analysis
+- `benchmark_search_performance()` - Performance profiling and timing tools
+
+#### 📦 Build & Installation Infrastructure
+- **Advanced setup.py** with Cargo extension building
+- **Automatic Rust compilation** during Python package installation
+- **Cross-platform support** for Python packaging on macOS/Linux/Windows
+- **Build helper scripts** for streamlined development workflow
+- **PyO3 configuration** optimized for performance and memory safety
+
+### 🔧 Enhanced Features
+- **Upgraded test coverage** from 89 to 93 comprehensive tests
+- **Enhanced error handling** with Python-friendly error messages  
+- **Improved documentation** with extensive Python integration examples
+- **Version synchronization** across all crates and Python package
+
+### 🐛 Fixed & Improved
+- **API consistency** between Rust core and Python wrapper interfaces
+- **Memory management** optimized for Python/Rust interoperability  
+- **Type safety** with comprehensive PyO3 wrapper implementations
+- **ID-to-index mapping** for efficient search result translation
+
+### 📚 Documentation & Examples
+- **Comprehensive Python examples** integrated into README
+- **Step-by-step installation guide** for Python bindings
+- **Quality analysis tutorials** showing compression trade-offs
+- **Performance benchmarking guide** with interpretation examples
+
+### ⚡ Technical Achievements
+- **Zero-copy operations** between NumPy arrays and Rust data structures
+- **Efficient serialization** using PyO3 and ndarray integration
+- **Thread-safe Python bindings** supporting Python's GIL requirements
+- **Memory-efficient implementations** with proper resource management
+
+**Migration Notes:**
+- Existing Rust API unchanged - full backward compatibility
+- New Python package requires PyO3 and NumPy dependencies
+- Python API mirrors Rust functionality with Pythonic conventions
+
+---
+
 ## [Unreleased]
 
 ### Added

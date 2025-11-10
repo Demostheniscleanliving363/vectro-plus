@@ -5,8 +5,8 @@
 ### High-Performance Embedding Compression & Search Toolkit
 
 ![Rust](https://img.shields.io/badge/Rust-1.89+-orange?logo=rust&style=for-the-badge)
-![Version](https://img.shields.io/badge/version-1.0.0-blue?style=for-the-badge)
-![Tests](https://img.shields.io/badge/tests-10/10_passing-green?style=for-the-badge)
+![Version](https://img.shields.io/badge/version-1.1.0-blue?style=for-the-badge)
+![Tests](https://img.shields.io/badge/tests-93/93_passing-green?style=for-the-badge)
 ![License](https://img.shields.io/badge/license-MIT-blue?style=for-the-badge)
 
 ```
@@ -36,7 +36,8 @@ A pure Rust toolkit for streaming compression, scalar quantization, and blazing-
 - **📦 Quantization**: Reduce size by 75-90% with minimal accuracy loss
 - **⚡ Fast Search**: Parallel cosine similarity with optimized indexing
 - **🌐 Web UI**: Beautiful interactive dashboard with real-time search
-- **🔌 REST API**: Production-ready HTTP endpoints for integration
+- **� Python Bindings**: Native Python API with PyO3 integration (NEW v1.1!)
+- **�🔌 REST API**: Production-ready HTTP endpoints for integration
 - **📊 Benchmarking**: Criterion integration with HTML reports and delta tracking
 - **🔄 Multiple Formats**: STREAM1 (f32) and QSTREAM1 (u8 quantized)
 - **🎨 Beautiful CLI**: Progress bars, colored output, and streaming logs
@@ -121,6 +122,60 @@ cargo test --workspace
 # 5️⃣ Run benchmarks
 cargo bench -p vectro_lib --summary
 ```
+
+## 🐍 Python Bindings (NEW! v1.1)
+
+Native Python integration with zero-copy operations:
+```python
+import numpy as np
+import vectro_plus
+
+# Create and populate dataset
+vectors = np.random.randn(1000, 768).astype(np.float32)
+dataset = vectro_plus.PyEmbeddingDataset()
+
+for i, vector in enumerate(vectors):
+    dataset.add_vector(f"doc_{i}", vector)
+
+# Create indices for fast search
+search_index = vectro_plus.PySearchIndex.from_dataset(dataset)
+quantized_index = vectro_plus.PyQuantizedIndex.from_dataset(dataset)
+
+# Perform similarity search
+query = np.random.randn(768).astype(np.float32)
+indices, similarities = search_index.search_vector(query, top_k=10)
+
+print(f"Top 10 similar documents: {indices}")
+print(f"Similarities: {similarities}")
+
+# Quality analysis and benchmarking
+quality = vectro_plus.analyze_compression_quality(
+    vectors, quantized_index, num_samples=100
+)
+print(f"Compression ratio: {quality['compression_ratio']:.1f}x")
+print(f"Quality loss: {100 - quality['average_similarity'] * 100:.2f}%")
+
+# Performance benchmarking
+benchmark = vectro_plus.benchmark_search_performance(
+    search_index, vectors[:100], top_k=10
+)
+print(f"Average latency: {benchmark['average_latency_ms']:.2f}ms")
+```
+
+**Installation:**
+```bash
+# Build Python bindings (requires PyO3)
+python setup.py build_ext --inplace
+
+# Or use the build script
+python build_python_bindings.py
+```
+
+**Features:**
+- Zero-copy NumPy array integration
+- Comprehensive quality analysis tools
+- Performance benchmarking utilities
+- Pythonic API with full type hints
 
 ## 🎯 Usage Examples
 
@@ -214,6 +269,14 @@ vectro-plus/
 │   │   ├── lib.rs       # compress_stream() with parallel pipeline
 │   │   └── main.rs      # CLI: compress, search, bench, serve
 │   └── tests/           # Integration tests
+├── vectro_py/           # Python bindings (NEW v1.1!)
+│   ├── src/
+│   │   └── lib.rs       # PyO3 Python wrapper API
+│   └── Cargo.toml      # Python extension configuration
+├── python/              # Python package and tests
+│   ├── vectro_plus/     # High-level Python API
+│   └── tests/          # Python test suite
+├── setup.py             # Python package installation
 ├── DEMO.md              # Comprehensive usage examples
 ├── QSTREAM.md           # Binary format documentation
 └── demo.sh              # Interactive demo script
@@ -286,10 +349,11 @@ See [QSTREAM.md](./QSTREAM.md) for complete specification.
 ║              🧪 Test Coverage                                 ║
 ╠═══════════════════════════════════════════════════════════════╣
 ║                                                               ║
-║  Total Tests:    10/10 passing  ████████████████████████████  ║
-║  vectro_lib:     5/5 passing    ████████████████████████████  ║
-║  vectro_cli:     5/5 passing    ████████████████████████████  ║
-║  Warnings:       0               ████████████████████████████  ║
+║  Total Tests:    93/93 passing ████████████████████████████  ║
+║  vectro_lib:     18/18 passing ████████████████████████████  ║
+║  vectro_cli:     75/75 passing ████████████████████████████  ║
+║  vectro_py:      0/0 passing   ████████████████████████████  ║
+║  Warnings:       0              ████████████████████████████  ║
 ║                                                               ║
 ╚═══════════════════════════════════════════════════════════════╝
 ```

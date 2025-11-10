@@ -2,6 +2,7 @@
 members = [
     "vectro_lib",
     "vectro_cli",
+    "vectro_py",
     "generators",
 ]
 resolver = "2"
